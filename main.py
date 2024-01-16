@@ -1,6 +1,8 @@
+import math
 import os
 import json
 import re
+import requests
 
 # TERABOX AUTHENTICATION
 if not os.path.exists("secrets.json"):
@@ -62,11 +64,6 @@ if not os.path.exists(movetoloc) and not os.path.isdir(movetoloc) and movefiles:
 
 print("ii INFO: Loaded settings.")
 
-#### PROGRAM INTERNAL VARS ####
-useragent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
-useragent += "(KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36"
-baseurltb = "https://www.terabox.com"
-
 # Delete files matching the pattern "*piece[0-9]*" in the temp directory
 if os.path.exists(f"{sourceloc}/temp"):
     print("ii INFO: Cleaning up temp directory...")
@@ -78,3 +75,46 @@ else:
     print("ii INFO: Creating temp directory...")
     os.mkdir(f"{sourceloc}/temp")
     print("ii INFO: Temp directory created.")
+
+# PROGRAM INTERNAL VARS
+useragent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+useragent += "(KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36"
+baseurltb = "https://www.terabox.com"
+
+
+# PROGRAM FUNCTIONS
+def convert_size(size_bytes: int):
+    """Converts bytes to human-readable size"""
+    if size_bytes == 0:
+        return "0 B"
+    size_name = ("B", "KB", "MB", "GB", "TB")
+    i = int(math.floor(math.log(size_bytes, 1024)))
+    p = math.pow(1024, i)
+    size = round(size_bytes / p, 2)
+    return f"{size} {size_name[i]}"
+
+
+# Show files to upload
+print()
+print("Files to upload:")
+for filename in os.listdir(sourceloc):
+    fsizebytes = os.path.getsize(os.path.join(sourceloc, filename))
+    fsize = convert_size(fsizebytes)
+    print(f" - {filename} ({fsize})")
+
+# Get member info and check if the user is a VIP
+vimemberreq = requests.get(
+    f"{baseurltb}/rest/2.0/membership/proxy/user?method=query",
+    headers={"User-Agent": useragent},
+    cookies=cookies,
+)
+member_info = json.loads(vimemberreq.text)["data"]["member_info"]
+vip = member_info["is_vip"]
+print(f"\nii INFO: You are a {'vip' if vip == 1 else 'non-vip'} user.")
+
+# Loop through files in source directory and add to array
+files = []
+for filename in os.listdir(sourceloc):
+    if os.path.isfile(os.path.join(sourceloc, filename)):
+        fsizebytes = os.path.getsize(os.path.join(sourceloc, filename))
+        files.append({"name": filename, "sizebytes": fsizebytes})
