@@ -4,6 +4,7 @@ import os
 import json
 import re
 import subprocess
+import hashlib
 
 import requests
 
@@ -161,7 +162,11 @@ for file in files:
                 ]
             )
 
+            md5dict = []
             for i, infile in enumerate(sorted(glob.glob('./temp/' + file["name"] + '.part*'))):
-                os.rename(infile, f"./temp/{file["name"]}.part{i:03}")
+                newname = f"./temp/{file["name"]}.part{i:03}"
+                os.rename(infile, newname)
+                md5dict.append(hashlib.md5(open(newname, 'rb').read()).hexdigest())
+            md5json = json.dumps(md5dict)
 
 
