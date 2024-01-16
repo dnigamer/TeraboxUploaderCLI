@@ -1,7 +1,10 @@
+import glob
 import math
 import os
 import json
 import re
+import subprocess
+
 import requests
 
 # TERABOX AUTHENTICATION
@@ -65,15 +68,15 @@ if not os.path.exists(movetoloc) and not os.path.isdir(movetoloc) and movefiles:
 print("ii INFO: Loaded settings.")
 
 # Delete files matching the pattern "*piece[0-9]*" in the temp directory
-if os.path.exists(f"{sourceloc}/temp"):
+if os.path.exists(f"./temp"):
     print("ii INFO: Cleaning up temp directory...")
-    for filename in os.listdir(f"{sourceloc}/temp"):
+    for filename in os.listdir(f"./temp"):
         if re.search(r"piece+\d", filename):
             os.remove(os.path.join(sourceloc, filename))
     print("ii INFO: Temp directory cleared.")
 else:
     print("ii INFO: Creating temp directory...")
-    os.mkdir(f"{sourceloc}/temp")
+    os.mkdir(f"./temp")
     print("ii INFO: Temp directory created.")
 
 # PROGRAM INTERNAL VARS
@@ -118,3 +121,47 @@ for filename in os.listdir(sourceloc):
     if os.path.isfile(os.path.join(sourceloc, filename)):
         fsizebytes = os.path.getsize(os.path.join(sourceloc, filename))
         files.append({"name": filename, "sizebytes": fsizebytes})
+
+for file in files:
+    print(f"\n/\\ UPLOAD: Uploading {file['name']}...")
+
+    # QUOTA CALCULATIONS
+    response = requests.get(
+        f"{baseurltb}/api/quota?checkfree=1",
+        headers={"User-Agent": useragent},
+        cookies=cookies,
+    )
+    quota = json.loads(response.text)
+    totquot = quota["total"]                  # total quota available
+    usequot = quota["used"]                   # used quota
+    aviquot = quota['total'] - quota['used']  # available quota
+    print(f"ii INFO: Available quota: {convert_size(aviquot)}")
+    if aviquot < file["sizebytes"]:
+        print(f"!! ERROR: not enough quota available for file {file["name"]}.")
+        continue
+    print(f"ii INFO: Available quota after the upload: {convert_size(aviquot - file["sizebytes"])}")
+
+    # UPLOAD PROCEDURE
+    if not os.path.exists(f"{sourceloc}/{file["name"]}"):
+        print(f"!! ERROR: File {file["name"]} does not exist on source directory anymore. Skipping...")
+        continue
+
+    if (vip == 1 and file["sizebytes"] <= 21474836479) or (vip == 0 and file["sizebytes"] <= 4294967296):
+        if file["sizebytes"] >= 2147483648:
+            print("ii INFO: File size is greater than 2GB. Uploading in chunks...")
+            subprocess.run(
+                [
+                    "split",
+                    "-b",
+                    "120M",
+                    "-a",
+                    "3",
+                    f"{sourceloc}/{file["name"]}",
+                    f"./temp/{file["name"]}.part",
+                ]
+            )
+
+            for i, infile in enumerate(sorted(glob.glob('./temp/' + file["name"] + '.part*'))):
+                os.rename(infile, f"./temp/{file["name"]}.part{i:03}")
+
+
