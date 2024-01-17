@@ -148,6 +148,7 @@ for file in files:
         continue
 
     if (vip == 1 and file["sizebytes"] <= 21474836479) or (vip == 0 and file["sizebytes"] <= 4294967296):
+        pieces = []
         if file["sizebytes"] >= 2147483648:
             print("ii INFO: File size is greater than 2GB. Uploading in chunks...")
             subprocess.run(
@@ -161,13 +162,15 @@ for file in files:
                     f"./temp/{file["name"]}.part",
                 ]
             )
-
             print("ii INFO: Calculating MD5 hashes...")
             md5dict = []
             for i, infile in enumerate(sorted(glob.glob('./temp/' + file["name"] + '.part*'))):
+                # rename the files to have a 3-digit suffix
                 newname = f"./temp/{file["name"]}.part{i:03}"
                 os.rename(infile, newname)
                 md5dict.append(hashlib.md5(open(newname, 'rb').read()).hexdigest())
+                # add the piece file to the pieces array
+                pieces.append(newname)
             md5json = json.dumps(md5dict)
             print("ii INFO: MD5 hashes calculated.")
         else:
@@ -176,6 +179,7 @@ for file in files:
             md5dict.append(hashlib.md5(open(f"{sourceloc}/{file["name"]}", 'rb').read()).hexdigest())
             print("ii INFO: MD5 hashes calculated.")
             md5json = json.dumps(md5dict)
+            pieces.append(f"{sourceloc}/{file["name"]}")
 
         cloudpath = remoteloc + "/" + file["name"]
         data = {
@@ -187,7 +191,7 @@ for file in files:
             "path": f"{cloudpath}",
             "autoinit": "1",
             "target_path": f"{remoteloc}",
-            "block_list": f"{json.dumps(md5json)}",
+            "block_list": f"{md5json}",
         }
 
         response = requests.post(f"{baseurltb}/api/precreate",
@@ -200,6 +204,91 @@ for file in files:
         if "uploadid" in response.text:
             uploadid = json.loads(response.text)["uploadid"]
             print(f"ii INFO: Precreate for upload ID \"{uploadid}\" successful.")
+            numpieces = len(pieces)
+
+            if numpieces > 1:
+                print(f"ii INFO: Number of pieces to be uploaded: {numpieces}")
+
+                for i, pi in enumerate(pieces):
+                    print(f"ii INFO: Uploading piece {pieces.index(pi) + 1} of {numpieces}...")
+                    data = {
+                        "type": "tmpfile",
+                        "app_id": "250528",
+                        "path": f"{cloudpath}",
+                        "uploadid": uploadid,
+                        "partseq": i,
+                    }
+                    response = requests.post(
+                        f"{baseurltb.replace('www', 'c-jp')}/rest/2.0/pcs/superfile2?method=upload",
+                        headers={"User-Agent": useragent, "Origin": baseurltb, "Content-Type": "multipart/form-data"},
+                        cookies=cookies,
+                        files={"file": open(pi, "rb")},
+                        params=data,
+                    )
+                    if response.status_code == 200:
+                        print(f"ii INFO: Piece {pieces.index(pi) + 1} of {numpieces} uploaded successfully.")
+                    else:
+                        print(f"!! ERROR: Piece {pieces.index(pi) + 1} of {numpieces} upload failed.")
+                        break
+            else:
+                print(f"ii INFO: Uploading file {file["name"]}...")
+                data = {
+                    "type": "tmpfile",
+                    "app_id": "250528",
+                    "path": f"{cloudpath}",
+                    "uploadid": uploadid,
+                    "partseq": "0",
+                }
+                try:
+                    response = requests.post(
+                        f"{baseurltb.replace('www', 'c-jp')}/rest/2.0/pcs/superfile2?method=upload",
+                        headers={"User-Agent": useragent, "Origin": baseurltb},
+                        cookies=cookies,
+                        files={"file": open(f"{sourceloc}/{file["name"]}", "rb")},
+                        params=data,
+                    )
+                    print(response.text)
+                    md5hash = response.json()["md5"]
+                    if md5hash == md5dict[0]:
+                        params = {
+                            "isdir": "0",
+                            "rtype": "1",
+                            "bdstoken": f"{bdstoken}",
+                            "app_id": "250528",
+                            "jsToken": f"{jstoken}"
+                        }
+                        data = {
+                            "path": f"{cloudpath}",
+                            "uploadid": f"{uploadid}",
+                            "target_path": f"{remoteloc}/",
+                            "size": f"{file["sizebytes"]}",
+                            "block_list": f"{md5json}",
+                        }
+                        response = requests.post(
+                            f"{baseurltb}/api/create",
+                            headers={"User-Agent": useragent, "Origin": baseurltb, "Content-Type": "application/x-www"
+                                                                                                   "-form-urlencoded"},
+                            cookies=cookies,
+                            params=params,
+                            data=data,
+                        )
+                        create = json.loads(response.text)
+                        if create["errno"] == 0:
+                            print(f"ii INFO: File {file["name"]} uploaded successfully.")
+                            if movefiles:
+                                print(f"ii INFO: Moving file {file["name"]} to {movetoloc}...")
+                                os.rename(f"{sourceloc}/{file["name"]}", f"{movetoloc}/{file["name"]}")
+                                print(f"ii INFO: File {file["name"]} moved successfully.")
+                    else:
+                        print(f"ii ERROR: MD5 hash mismatch for file {file["name"]} after upload. Skipping file...")
+                        print(f"ii ERROR: Expected: {md5dict[0]}")
+                        print(f"ii ERROR: Received: {md5hash}")
+                        continue
+
+                except Exception as e:
+                    print(f"!! ERROR: File upload failed. Server returned status code {response.status_code}.")
+                    print(f"!! ERROR: More information: {e}")
+                    continue
         else:
-            print("!! ERROR: Precreate failed. Skipping file...")
+            print("!! ERROR: Precreate for file failed. Skipping file...")
             continue
