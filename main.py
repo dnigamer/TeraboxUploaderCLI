@@ -49,8 +49,6 @@ with open("settings.json", "r") as f:
     remoteloc = settings["directories"]["remotedir"]
     movetoloc = settings["directories"]["uploadeddir"]
     movefiles = True if settings["settings"]["movefiles"] == "true" else False
-    downshare = True if settings["settings"]["sharelink"] == "true" else False
-    expirdate = settings["settings"]["expireshare"]
     delsrcfil = True if settings["settings"]["deletesource"] == "true" else False
     f.close()
 
