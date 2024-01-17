@@ -133,8 +133,8 @@ for file in files:
         cookies=cookies,
     )
     quota = json.loads(response.text)
-    totquot = quota["total"]                  # total quota available
-    usequot = quota["used"]                   # used quota
+    totquot = quota["total"]  # total quota available
+    usequot = quota["used"]  # used quota
     aviquot = quota['total'] - quota['used']  # available quota
     print(f"ii INFO: Available quota: {convert_size(aviquot)}")
     if aviquot < file["sizebytes"]:
@@ -162,11 +162,44 @@ for file in files:
                 ]
             )
 
+            print("ii INFO: Calculating MD5 hashes...")
             md5dict = []
             for i, infile in enumerate(sorted(glob.glob('./temp/' + file["name"] + '.part*'))):
                 newname = f"./temp/{file["name"]}.part{i:03}"
                 os.rename(infile, newname)
                 md5dict.append(hashlib.md5(open(newname, 'rb').read()).hexdigest())
             md5json = json.dumps(md5dict)
+            print("ii INFO: MD5 hashes calculated.")
+        else:
+            md5dict = []
+            print("ii INFO: Calculating MD5 hashes...")
+            md5dict.append(hashlib.md5(open(f"{sourceloc}/{file["name"]}", 'rb').read()).hexdigest())
+            print("ii INFO: MD5 hashes calculated.")
+            md5json = json.dumps(md5dict)
 
+        cloudpath = remoteloc + "/" + file["name"]
+        data = {
+            "app_id": "250528",
+            "web": "1",
+            "channel": "dubox",
+            "clienttype": "0",
+            "jsToken": f"{jstoken}",
+            "path": f"{cloudpath}",
+            "autoinit": "1",
+            "target_path": f"{remoteloc}",
+            "block_list": f"{json.dumps(md5json)}",
+        }
 
+        response = requests.post(f"{baseurltb}/api/precreate",
+                                 headers={"User-Agent": useragent, "Origin": baseurltb,
+                                          "Referer": baseurltb + "/main?category=all",
+                                          "Content-Type": "application/x-www-form-urlencoded"},
+                                 cookies=cookies,
+                                 data=data)
+
+        if "uploadid" in response.text:
+            uploadid = json.loads(response.text)["uploadid"]
+            print(f"ii INFO: Precreate for upload ID \"{uploadid}\" successful.")
+        else:
+            print("!! ERROR: Precreate failed. Skipping file...")
+            continue
