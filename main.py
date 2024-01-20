@@ -2,7 +2,6 @@ import glob
 import math
 import os
 import json
-import re
 import subprocess
 import hashlib
 
@@ -66,21 +65,11 @@ if not os.path.exists(movetoloc) and not os.path.isdir(movetoloc) and movefiles:
 
 print("ii INFO: Loaded settings.")
 
-# Delete files matching the pattern "*piece[0-9]*" in the temp directory
-if os.path.exists(f"./temp"):
-    print("ii INFO: Cleaning up temp directory...")
-    for filename in os.listdir(f"./temp"):
-        os.remove(os.path.join("./temp/", filename))
-    print("ii INFO: Temp directory cleared.")
-else:
-    print("ii INFO: Creating temp directory...")
-    os.mkdir(f"./temp")
-    print("ii INFO: Temp directory created.")
-
 # PROGRAM INTERNAL VARS
 useragent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
 useragent += "(KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36"
 baseurltb = "https://www.terabox.com"
+temp_directory = "./temp"
 
 
 # PROGRAM FUNCTIONS
@@ -89,10 +78,10 @@ def convert_size(size_bytes: int):
     if size_bytes == 0:
         return "0 B"
     size_name = ("B", "KB", "MB", "GB", "TB")
-    i = int(math.floor(math.log(size_bytes, 1024)))
-    p = math.pow(1024, i)
+    it = int(math.floor(math.log(size_bytes, 1024)))
+    p = math.pow(1024, it)
     size = round(size_bytes / p, 2)
-    return f"{size} {size_name[i]}"
+    return f"{size} {size_name[it]}"
 
 
 def precreate_file(filenam: str, md5json: str):
@@ -121,8 +110,8 @@ def precreate_file(filenam: str, md5json: str):
             print(f"!! ERROR: More information: {json.loads(preresponse.text)}")
             return "fail"
     except Exception as e:
-        print(f"!! ERROR: File precreate failed. Server returned status code {preresponse.status_code}.")
-        print(f"!! ERROR: More information: {e}")
+        print(f"!! ERROR: File precreate request failed.")
+        print(f"!! ERROR: More information about this error: {e}")
         return "fail"
 
 
@@ -152,10 +141,27 @@ def upload_file(filename: str, uploadid: str, md5hash: str):
                 print(f"ii ERROR: MD5 hash mismatch for file {file["name"]} after upload. Skipping file...")
                 return "mismatch"
     except Exception as e:
-        print(f"!! ERROR: File upload failed. Server returned status code {upresponse.status_code}.")
-        print(f"!! ERROR: More information: {e}")
+        print(f"!! ERROR: File upload request failed.")
+        print(f"!! ERROR: More information about this error: {e}")
         return "failed"
 
+
+def clean_temp():
+    """Cleans the temp folder"""
+    if os.path.exists(temp_directory):
+        print("ii INFO: Cleaning up temp directory...")
+        for filename in os.listdir(temp_directory):
+            file_path = os.path.join(temp_directory, filename)
+            os.remove(file_path)
+        print("ii INFO: Temp directory cleared.")
+    else:
+        print("ii INFO: Creating temp directory...")
+        os.mkdir(temp_directory)
+        print("ii INFO: Temp directory created.")
+
+
+# PROGRAM START
+clean_temp()  # Clean temp directory
 
 # Show files to upload
 print("\nFiles to upload:")
@@ -178,7 +184,7 @@ print(f"\nii INFO: You are a {'vip' if vip == 1 else 'non-vip'} user.")
 files = []
 for filename in os.listdir(sourceloc):
     if os.path.isfile(os.path.join(sourceloc, filename)):
-        if filename == ".DS_Store" or filename == "main.py" or filename == "settings.json" or filename == "secrets.json":
+        if filename in [".DS_Store", "main.py", "settings.json", "secrets.json"]:
             print(f"ii INFO: Skipping file {filename} because is a protected file.")
             continue
         fsizebytes = os.path.getsize(os.path.join(sourceloc, filename))
