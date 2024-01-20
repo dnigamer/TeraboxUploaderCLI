@@ -239,6 +239,7 @@ for file in files:
     totquot = quota["total"]  # total quota available
     usequot = quota["used"]  # used quota
     aviquot = quota['total'] - quota['used']  # available quota
+
     print(f"ii INFO: Available quota: {convert_size(aviquot)}")
     if aviquot < file["sizebytes"]:
         print(f"!! ERROR: not enough quota available for file {file["name"]}.")
@@ -247,115 +248,115 @@ for file in files:
 
     # UPLOAD PROCEDURE
     if not os.path.exists(f"{sourceloc}/{file["name"]}"):
-        print(f"!! ERROR: File {file["name"]} does not exist on source directory anymore. Skipping...")
+        print(f"!! ERROR: File {file["name"]} does not exist on source directory anymore. Skipping file...")
         continue
 
-    if (vip == 1 and file["sizebytes"] <= 21474836479) or (vip == 0 and file["sizebytes"] <= 4294967296):
-        pieces = []
-        if file["sizebytes"] >= 2147483648:
-            print("ii SPLIT: File size is greater than 2GB. Uploading in chunks...")
-            subprocess.run(
-                [
-                    "split",
-                    "-b",
-                    "120M",
-                    "-a",
-                    "3",
-                    f"{sourceloc}/{file["name"]}",
-                    f"./temp/{file["name"]}.part",
-                ]
-            )
-            print("ii MD5: Calculating MD5 hashes...")
-            md5dict = []
-            for i, infile in enumerate(sorted(glob.glob('./temp/' + file["name"] + '.part*'))):
-                # rename the files to have a 3-digit suffix
-                newname = f"./temp/{file["name"]}.part{i:03}"
-                os.rename(infile, newname)
-                md5dict.append(hashlib.md5(open(newname, 'rb').read()).hexdigest())
-                # add the piece file path to the pieces array
-                pieces.append(newname)
-            md5json = json.dumps(md5dict)
-            print("ii MD5: MD5 hashes calculated.")
-        else:
-            md5dict = []
-            print("ii MD5: Calculating MD5 hashes...")
-            md5dict.append(hashlib.md5(open(f"{sourceloc}/{file["name"]}", 'rb').read()).hexdigest())
-            print("ii MD5: MD5 hashes calculated.")
-            md5json = json.dumps(md5dict)
-            pieces.append(f"{sourceloc}/{file["name"]}")
-
-        # Preinitialize the full file on the cloud
-        print("ii PRECREATE: Precreating file...")
-        uploadid = precreate_file(file["name"], md5json)
-        if uploadid == "fail":
-            continue
-        print(f"ii PRECREATE: Precreate for upload ID \"{uploadid}\" successful.")
-        cloudpath = remoteloc + "/" + file["name"]
-
-        if len(pieces) > 1:
-            print(f"ii UPLOAD: Number of pieces to be uploaded: {len(pieces)}")
-            print(f"ii PIECE UPLOAD: Commencing upload of file {file["name"]} in pieces...")
-
-            # Upload the pieces
-            for i, pi in enumerate(pieces):
-                print(f"ii PIECE UPLOAD: Uploading piece {pieces.index(pi) + 1} of {len(pieces)}...")
-                data = {
-                    "type": "tmpfile",
-                    "app_id": "250528",
-                    "path": f"{cloudpath}",
-                    "uploadid": uploadid,
-                    "partseq": i,
-                }
-                response = requests.post(
-                    f"{baseurltb.replace('www', 'c-jp')}/rest/2.0/pcs/superfile2?method=upload",
-                    headers={"User-Agent": useragent, "Origin": baseurltb, "Content-Type": "multipart/form-data"},
-                    cookies=cookies,
-                    files={"file": open(pi, "rb")},
-                    params=data,
-                )
-                if response.status_code == 200:
-                    print(f"ii PIECE UPLOAD: Piece {pieces.index(pi) + 1} of {len(pieces)} uploaded successfully.")
-                else:
-                    print(f"!! ERROR: Piece {pieces.index(pi) + 1} of {len(pieces)} upload failed.")
-                    print(f"!! ERROR: Server returned status code {response.status_code}.")
-                    print(f"!! ERROR: More information: {json.loads(response.text)}")
-                    print(f"!! ERROR: Skipping file {file["name"]}...")
-                    break
-        else:
-            print(f"ii UPLOAD: Uploading file {file["name"]}...")
-
-            uploadhash = upload_file(file["name"], uploadid, md5dict[0])
-            if uploadhash == "failed":
-                continue
-            if uploadhash == "mismatch":
-                continue
-
-            create = create_file(cloudpath, uploadid, file["sizebytes"], md5json)
-            if json.loads(create.text)["errno"] == 0:
-                print(f"ii UPLOAD: File {file["name"]} uploaded successfully.")
-            else:
-                print(f"!! ERROR: File {file["name"]} upload failed.")
-                print(f"!! ERROR: More information: {create}")
-                continue
-
-        if movefiles:
-            print(f"ii MOVE: Moving file {sourceloc}/{file["name"]} to {movetoloc}/{file["name"]}...")
-            try:
-                os.rename(f"{sourceloc}/{file["name"]}", f"{movetoloc}/{file["name"]}")
-                print(f"ii MOVE: File {file["name"]} moved successfully to destination.")
-            except Exception as e:
-                print(f"!! ERROR: File {file["name"]} could not be moved.")
-                print(f"!! ERROR: More information about this error: {e}")
-        if delsrcfil:
-            print(f"ii DELETE: Deleting file {file["name"]}...")
-            try:
-                os.remove(f"{sourceloc}/{file["name"]}")
-                print(f"ii DELETE: File {file["name"]} deleted successfully.")
-            except Exception as e:
-                print(f"!! ERROR: File {file["name"]} could not be deleted.")
-                print(f"!! ERROR: More information about this error: {e}")
-    else:
+    if (vip == 1 and file["sizebytes"] >= 21474836479) or (vip == 0 and file["sizebytes"] >= 4294967296):
         print(f"!! ERROR: File {file["name"]} is too big for the type of account you have. Skipping file...")
         print(f"!! ERROR: File size: {convert_size(file["sizebytes"])}")
         print(f"!! ERROR: Maximum file size for your account: {'20GB' if vip == 1 else '4GB'}")
         continue
+
+    pieces = []
+    if file["sizebytes"] >= 2147483648:
+        print("ii SPLIT: File size is greater than 2GB. Uploading in chunks...")
+        subprocess.run(
+            [
+                "split",
+                "-b",
+                "120M",
+                "-a",
+                "3",
+                f"{sourceloc}/{file["name"]}",
+                f"./temp/{file["name"]}.part",
+            ]
+        )
+        print("ii MD5: Calculating MD5 hashes...")
+        md5dict = []
+        for i, infile in enumerate(sorted(glob.glob('./temp/' + file["name"] + '.part*'))):
+            # rename the files to have a 3-digit suffix
+            newname = f"./temp/{file["name"]}.part{i:03}"
+            os.rename(infile, newname)
+            md5dict.append(hashlib.md5(open(newname, 'rb').read()).hexdigest())
+            # add the piece file path to the pieces array
+            pieces.append(newname)
+        md5json = json.dumps(md5dict)
+        print("ii MD5: MD5 hashes calculated.")
+    else:
+        md5dict = []
+        print("ii MD5: Calculating MD5 hashes...")
+        md5dict.append(hashlib.md5(open(f"{sourceloc}/{file["name"]}", 'rb').read()).hexdigest())
+        print("ii MD5: MD5 hashes calculated.")
+        md5json = json.dumps(md5dict)
+        pieces.append(f"{sourceloc}/{file["name"]}")
+
+    # Preinitialize the full file on the cloud
+    print("ii PRECREATE: Precreating file...")
+    uploadid = precreate_file(file["name"], md5json)
+    if uploadid == "fail":
+        continue
+    print(f"ii PRECREATE: Precreate for upload ID \"{uploadid}\" successful.")
+    cloudpath = remoteloc + "/" + file["name"]
+
+    if len(pieces) > 1:
+        print(f"ii UPLOAD: Number of pieces to be uploaded: {len(pieces)}")
+        print(f"ii PIECE UPLOAD: Commencing upload of file {file["name"]} in pieces...")
+
+        # Upload the pieces
+        for i, pi in enumerate(pieces):
+            print(f"ii PIECE UPLOAD: Uploading piece {pieces.index(pi) + 1} of {len(pieces)}...")
+            data = {
+                "type": "tmpfile",
+                "app_id": "250528",
+                "path": f"{cloudpath}",
+                "uploadid": uploadid,
+                "partseq": i,
+            }
+            response = requests.post(
+                f"{baseurltb.replace('www', 'c-jp')}/rest/2.0/pcs/superfile2?method=upload",
+                headers={"User-Agent": useragent, "Origin": baseurltb, "Content-Type": "multipart/form-data"},
+                cookies=cookies,
+                files={"file": open(pi, "rb")},
+                params=data,
+            )
+            if response.status_code == 200:
+                print(f"ii PIECE UPLOAD: Piece {pieces.index(pi) + 1} of {len(pieces)} uploaded successfully.")
+            else:
+                print(f"!! ERROR: Piece {pieces.index(pi) + 1} of {len(pieces)} upload failed.")
+                print(f"!! ERROR: Server returned status code {response.status_code}.")
+                print(f"!! ERROR: More information: {json.loads(response.text)}")
+                print(f"!! ERROR: Skipping file {file["name"]}...")
+                break
+    else:
+        print(f"ii UPLOAD: Uploading file {file["name"]}...")
+
+        uploadhash = upload_file(file["name"], uploadid, md5dict[0])
+        if uploadhash == "failed":
+            continue
+        if uploadhash == "mismatch":
+            continue
+
+        create = create_file(cloudpath, uploadid, file["sizebytes"], md5json)
+        if json.loads(create.text)["errno"] == 0:
+            print(f"ii UPLOAD: File {file["name"]} uploaded successfully.")
+        else:
+            print(f"!! ERROR: File {file["name"]} upload failed.")
+            print(f"!! ERROR: More information: {create}")
+            continue
+
+    if movefiles:
+        print(f"ii MOVE: Moving file {sourceloc}/{file["name"]} to {movetoloc}/{file["name"]}...")
+        try:
+            os.rename(f"{sourceloc}/{file["name"]}", f"{movetoloc}/{file["name"]}")
+            print(f"ii MOVE: File {file["name"]} moved successfully to destination.")
+        except Exception as e:
+            print(f"!! ERROR: File {file["name"]} could not be moved.")
+            print(f"!! ERROR: More information about this error: {e}")
+    if delsrcfil:
+        print(f"ii DELETE: Deleting file {file["name"]}...")
+        try:
+            os.remove(f"{sourceloc}/{file["name"]}")
+            print(f"ii DELETE: File {file["name"]} deleted successfully.")
+        except Exception as e:
+            print(f"!! ERROR: File {file["name"]} could not be deleted.")
+            print(f"!! ERROR: More information about this error: {e}")
