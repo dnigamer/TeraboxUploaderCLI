@@ -24,6 +24,7 @@ if not os.path.exists("secrets.json"):
     print("}")
     exit()
 
+print("ii INFO: Loading secrets...")
 with open("secrets.json", "r") as f:
     secrets = json.load(f)
     jstoken = secrets["jstoken"]
@@ -34,14 +35,14 @@ with open("secrets.json", "r") as f:
 if not (any(char.isdigit() for char in jstoken) and any(char.isdigit() for char in bdstoken)):
     print("!! ERROR: Invalid token.")
     exit()
-
-print("ii INFO: Loaded secrets.")
+print("ii SUCCESS: Loaded secrets.")
 
 # PROGRAM CONFIGURATION
 if not os.path.exists("settings.json"):
     print("!! Error: secrets.json file not found.")
     exit()
 
+print("ii INFO: Loading settings...")
 with open("settings.json", "r") as f:
     settings = json.load(f)
     sourceloc = settings["directories"]["sourcedir"]
@@ -50,6 +51,11 @@ with open("settings.json", "r") as f:
     movefiles = True if settings["settings"]["movefiles"] == "true" else False
     delsrcfil = True if settings["settings"]["deletesource"] == "true" else False
     f.close()
+
+if delsrcfil and movefiles:
+    print("!! ERROR: You cannot have move and delete files settings configured as true at the same time.")
+    print("!! ERROR: Please check your settings.json file for these configurations.")
+    exit()
 
 if not sourceloc or not remoteloc or not movetoloc:
     print("!! ERROR: Invalid directory paths.")
@@ -63,7 +69,7 @@ if not os.path.exists(movetoloc) and not os.path.isdir(movetoloc) and movefiles:
     print("!! ERROR: Move to directory does not exist. Please check the path.")
     exit()
 
-print("ii INFO: Loaded settings.")
+print("ii SUCCESS: Loaded settings.")
 
 # PROGRAM INTERNAL VARS
 useragent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
@@ -107,6 +113,9 @@ def precreate_file(filenam: str, md5json: str):
             return json.loads(preresponse.text)["uploadid"]
         else:
             print(f"!! ERROR: File precreate failed. Server returned status code {preresponse.status_code}.")
+            if (json.loads(preresponse.text)["errmsg"] == 'need verify' or json.loads(preresponse.text)["errno"] ==
+                    '4000023'):
+                print("!! ERROR: The login session has expired. Please login again and refresh the credentials.")
             print(f"!! ERROR: More information: {json.loads(preresponse.text)}")
             return "fail"
     except Exception as e:
@@ -146,31 +155,56 @@ def upload_file(filename: str, uploadid: str, md5hash: str):
         return "failed"
 
 
+def create_file(cloudpath: str, uploadid: str, sizebytes: int, md5json: str) -> requests.Response:
+    crresponse = requests.post(
+        f"{baseurltb}/api/create",
+        headers={"User-Agent": useragent, "Origin": baseurltb, "Content-Type": "application/x-www"
+                                                                               "-form-urlencoded"},
+        cookies=cookies,
+        params={
+            "isdir": "0",
+            "rtype": "1",
+            "bdstoken": f"{bdstoken}",
+            "app_id": "250528",
+            "jsToken": f"{jstoken}"
+        },
+        data={
+            "path": f"{cloudpath}",
+            "uploadid": f"{uploadid}",
+            "target_path": f"{remoteloc}/",
+            "size": f"{sizebytes}",
+            "block_list": f"{md5json}",
+        },
+    )
+    return crresponse
+
+
 def clean_temp():
     """Cleans the temp folder"""
     if os.path.exists(temp_directory):
         print("ii INFO: Cleaning up temp directory...")
         for filename in os.listdir(temp_directory):
             file_path = os.path.join(temp_directory, filename)
-            os.remove(file_path)
-        print("ii INFO: Temp directory cleared.")
+            try:
+                os.remove(file_path)
+            except Exception as e:
+                print(f"!! ERROR: File {filename} could not be deleted.")
+                print(f"!! ERROR: More information about this error: {e}")
+                return False
+        print("ii SUCCESS: Temp directory cleared.")
+        return True
     else:
         print("ii INFO: Creating temp directory...")
         os.mkdir(temp_directory)
-        print("ii INFO: Temp directory created.")
+        print("ii SUCCESS: Temp directory created.")
+        return True
 
 
 # PROGRAM START
 clean_temp()  # Clean temp directory
 
-# Show files to upload
-print("\nFiles to upload:")
-for filename in os.listdir(sourceloc):
-    fsizebytes = os.path.getsize(os.path.join(sourceloc, filename))
-    fsize = convert_size(fsizebytes)
-    print(f" - {filename} ({fsize})")
-
 # Get member info and check if the user is a VIP
+print("\nii INFO: Checking if you are a VIP user...")
 vimemberreq = requests.get(
     f"{baseurltb}/rest/2.0/membership/proxy/user?method=query",
     headers={"User-Agent": useragent},
@@ -178,16 +212,18 @@ vimemberreq = requests.get(
 )
 member_info = json.loads(vimemberreq.text)["data"]["member_info"]
 vip = member_info["is_vip"]
-print(f"\nii INFO: You are a {'vip' if vip == 1 else 'non-vip'} user.")
+print(f"ii INFO: You are a {'vip' if vip == 1 else 'non-vip'} user.")
 
 # Loop through files in source directory and add to array
 files = []
+print("\nii INFO: Files to upload:")
 for filename in os.listdir(sourceloc):
     if os.path.isfile(os.path.join(sourceloc, filename)):
         if filename in [".DS_Store", "main.py", "settings.json", "secrets.json"]:
-            print(f"ii INFO: Skipping file {filename} because is a protected file.")
+            print(f"ii INFO: Skipping file {filename} because it's a protected file.")
             continue
         fsizebytes = os.path.getsize(os.path.join(sourceloc, filename))
+        print(f" - {filename} ({convert_size(fsizebytes)})")
         files.append({"name": filename, "sizebytes": fsizebytes})
 
 for file in files:
@@ -258,9 +294,11 @@ for file in files:
 
         if len(pieces) > 1:
             print(f"ii UPLOAD: Number of pieces to be uploaded: {len(pieces)}")
+            print(f"ii PIECE UPLOAD: Commencing upload of file {file["name"]} in pieces...")
 
+            # Upload the pieces
             for i, pi in enumerate(pieces):
-                print(f"ii UPLOAD: Uploading piece {pieces.index(pi) + 1} of {len(pieces)}...")
+                print(f"ii PIECE UPLOAD: Uploading piece {pieces.index(pi) + 1} of {len(pieces)}...")
                 data = {
                     "type": "tmpfile",
                     "app_id": "250528",
@@ -276,9 +314,12 @@ for file in files:
                     params=data,
                 )
                 if response.status_code == 200:
-                    print(f"ii UPLOAD: Piece {pieces.index(pi) + 1} of {len(pieces)} uploaded successfully.")
+                    print(f"ii PIECE UPLOAD: Piece {pieces.index(pi) + 1} of {len(pieces)} uploaded successfully.")
                 else:
                     print(f"!! ERROR: Piece {pieces.index(pi) + 1} of {len(pieces)} upload failed.")
+                    print(f"!! ERROR: Server returned status code {response.status_code}.")
+                    print(f"!! ERROR: More information: {json.loads(response.text)}")
+                    print(f"!! ERROR: Skipping file {file["name"]}...")
                     break
         else:
             print(f"ii UPLOAD: Uploading file {file["name"]}...")
@@ -289,39 +330,30 @@ for file in files:
             if uploadhash == "mismatch":
                 continue
 
-            params = {
-                "isdir": "0",
-                "rtype": "1",
-                "bdstoken": f"{bdstoken}",
-                "app_id": "250528",
-                "jsToken": f"{jstoken}"
-            }
-            data = {
-                "path": f"{cloudpath}",
-                "uploadid": f"{uploadid}",
-                "target_path": f"{remoteloc}/",
-                "size": f"{file["sizebytes"]}",
-                "block_list": f"{md5json}",
-            }
-            response = requests.post(
-                f"{baseurltb}/api/create",
-                headers={"User-Agent": useragent, "Origin": baseurltb, "Content-Type": "application/x-www"
-                                                                                       "-form-urlencoded"},
-                cookies=cookies,
-                params=params,
-                data=data,
-            )
-            create = json.loads(response.text)
-            if create["errno"] == 0:
+            create = create_file(cloudpath, uploadid, file["sizebytes"], md5json)
+            if json.loads(create.text)["errno"] == 0:
                 print(f"ii UPLOAD: File {file["name"]} uploaded successfully.")
+            else:
+                print(f"!! ERROR: File {file["name"]} upload failed.")
+                print(f"!! ERROR: More information: {create}")
+                continue
+
         if movefiles:
-            print(f"ii MOVE: Moving file {file["name"]} to {movetoloc}...")
-            os.rename(f"{sourceloc}/{file["name"]}", f"{movetoloc}/{file["name"]}")
-            print(f"ii MOVE: File {file["name"]} moved successfully.")
+            print(f"ii MOVE: Moving file {sourceloc}/{file["name"]} to {movetoloc}/{file["name"]}...")
+            try:
+                os.rename(f"{sourceloc}/{file["name"]}", f"{movetoloc}/{file["name"]}")
+                print(f"ii MOVE: File {file["name"]} moved successfully to destination.")
+            except Exception as e:
+                print(f"!! ERROR: File {file["name"]} could not be moved.")
+                print(f"!! ERROR: More information about this error: {e}")
         if delsrcfil:
             print(f"ii DELETE: Deleting file {file["name"]}...")
-            os.remove(f"{sourceloc}/{file["name"]}")
-            print(f"ii DELETE: File {file["name"]} deleted successfully.")
+            try:
+                os.remove(f"{sourceloc}/{file["name"]}")
+                print(f"ii DELETE: File {file["name"]} deleted successfully.")
+            except Exception as e:
+                print(f"!! ERROR: File {file["name"]} could not be deleted.")
+                print(f"!! ERROR: More information about this error: {e}")
     else:
         print(f"!! ERROR: File {file["name"]} is too big for the type of account you have. Skipping file...")
         print(f"!! ERROR: File size: {convert_size(file["sizebytes"])}")
