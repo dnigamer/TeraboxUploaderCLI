@@ -308,11 +308,14 @@ for file in files:
             create = json.loads(response.text)
             if create["errno"] == 0:
                 print(f"ii UPLOAD: File {file["name"]} uploaded successfully.")
-                if movefiles:
-                    print(f"ii MOVE: Moving file {file["name"]} to {movetoloc}...")
-                    os.rename(f"{sourceloc}/{file["name"]}", f"{movetoloc}/{file["name"]}")
-                    print(f"ii MOVE: File {file["name"]} moved successfully.")
-
+        if movefiles:
+            print(f"ii MOVE: Moving file {file["name"]} to {movetoloc}...")
+            os.rename(f"{sourceloc}/{file["name"]}", f"{movetoloc}/{file["name"]}")
+            print(f"ii MOVE: File {file["name"]} moved successfully.")
+        if delsrcfil:
+            print(f"ii DELETE: Deleting file {file["name"]}...")
+            os.remove(f"{sourceloc}/{file["name"]}")
+            print(f"ii DELETE: File {file["name"]} deleted successfully.")
     else:
         print(f"!! ERROR: File {file["name"]} is too big for the type of account you have. Skipping file...")
         print(f"!! ERROR: File size: {convert_size(file["sizebytes"])}")
