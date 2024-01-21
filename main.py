@@ -7,6 +7,17 @@ import hashlib
 
 import requests
 
+print("-"*97)
+print("Terabox Uploader CLI v1.0.0 2024")
+print("* Developed by Gonçalo M. (@dnigamer in Github).")
+print("* For more information, please visit https://github.com/dnigamer/TeraboxUploaderCLI.")
+print("* If you find any bugs, please open an issue in the Github repository mentioned in the link above")
+print("-"*97)
+print("! This program is licensed under the MIT License.")
+print("! This program is provided as-is, without any warranty.")
+print("! This program is not affiliated with Terabox in any way.")
+print("-"*97)
+
 # TERABOX AUTHENTICATION
 if not os.path.exists("secrets.json"):
     print("!! ERROR: secrets.json file not found.")
@@ -30,6 +41,9 @@ with open("secrets.json", "r") as f:
     jstoken = secrets["jstoken"]
     bdstoken = secrets["bdstoken"]
     cookies = secrets["cookies"]
+    cookies_str = ""
+    for key, value in cookies.items():
+        cookies_str += f"{key}={value};"
     f.close()
 
 if not (any(char.isdigit() for char in jstoken) and any(char.isdigit() for char in bdstoken)):
@@ -76,6 +90,7 @@ useragent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 
 useragent += "(KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36"
 baseurltb = "https://www.terabox.com"
 temp_directory = "./temp"
+errors = False
 
 
 # PROGRAM FUNCTIONS
@@ -124,31 +139,41 @@ def precreate_file(filenam: str, md5json: str):
         return "fail"
 
 
-def upload_file(filename: str, uploadid: str, md5hash: str):
-    """Uploads a file"""
+def upload_file(filename: str, uploadid: str, md5hash: str, partseq: int = 0) -> str:
+    """Uploads a file
+    :param filename: The name of the file to upload in the cloud path including the filepath.
+    :param uploadid: The upload ID of the file.
+    :param md5hash: The MD5 hash of the file/piece to upload.
+    :param partseq: The part sequence of the file. Default is 0 (for single file upload).
+    :return: The MD5 hash of the file after upload. If the MD5 hash does not match, returns "mismatch". If the upload
+    fails, returns "failed".
+    """
     try:
-        upresponse = requests.post(
-            f"{baseurltb.replace('www', 'c-jp')}/rest/2.0/pcs/superfile2?method=upload",
-            headers={"User-Agent": useragent, "Origin": baseurltb},
-            cookies=cookies,
-            files={"file": open(f"{sourceloc}/{filename}", "rb")},
-            params={
-                "type": "tmpfile",
-                "app_id": "250528",
-                "path": f"{remoteloc + '/' + filename}",
-                "uploadid": uploadid,
-                "partseq": "0",
-            },
-        )
-        print(upresponse.text)
-        if upresponse.status_code == 200:
-            md5serv = upresponse.json()["md5"]
-            if md5serv == md5hash:
-                print(f"ii UPLOAD: MD5 hash match for file {file["name"]} after upload.")
-                return md5serv
+        # TODO: Implement compatibility with Windows. Command is only working with macOS and Linux.
+        out = subprocess.run(["curl", "-X", "POST", "--progress-bar",
+                              "-H", f"User-Agent:{useragent}",
+                              "-H", f"Origin:{baseurltb}",
+                              "-H", f"Referer:{baseurltb}/main?category=all",
+                              "-H", "Content-Type:multipart/form-data",
+                              "-b", f"{cookies_str}",
+                              "-F", f"file=@{filename}",
+                              f"{baseurltb.replace('www', 'c-jp')}:443/rest/2.0/pcs/superfile2?"
+                              f"method=upload&type=tmpfile&app_id=250528&path={remoteloc + '/' + filename}&"
+                              f"uploadid={uploadid}&partseq={partseq}"],
+                             stdout=subprocess.PIPE)
+        uresp = json.loads(out.stdout.decode('utf-8'))
+        if 'error_code' not in uresp:
+            print(f"ii UPLOAD: File {filename} uploaded successfully.")
+            if uresp["md5"] == md5hash:
+                print(f"ii MD5: MD5 hash match for file {filename} after upload.")
+                return uresp["md5"]
             else:
-                print(f"ii ERROR: MD5 hash mismatch for file {file["name"]} after upload. Skipping file...")
+                print(f"ii ERROR: MD5 hash mismatch for file {filename} after upload. Skipping file...")
                 return "mismatch"
+        else:
+            print(f"!! ERROR: File upload failed.")
+            print(f"!! ERROR: More information: {uresp}")
+            return "failed"
     except Exception as e:
         print(f"!! ERROR: File upload request failed.")
         print(f"!! ERROR: More information about this error: {e}")
@@ -204,7 +229,7 @@ def clean_temp():
 clean_temp()  # Clean temp directory
 
 # Get member info and check if the user is a VIP
-print("\nii INFO: Checking if you are a VIP user...")
+print("ii VIP: Checking if you are a VIP user...")
 vimemberreq = requests.get(
     f"{baseurltb}/rest/2.0/membership/proxy/user?method=query",
     headers={"User-Agent": useragent},
@@ -212,7 +237,7 @@ vimemberreq = requests.get(
 )
 member_info = json.loads(vimemberreq.text)["data"]["member_info"]
 vip = member_info["is_vip"]
-print(f"ii INFO: You are a {'vip' if vip == 1 else 'non-vip'} user.")
+print(f"ii VIP: You are a {'vip' if vip == 1 else 'non-vip'} user.")
 
 # Loop through files in source directory and add to array
 files = []
@@ -259,7 +284,7 @@ for file in files:
 
     pieces = []
     if file["sizebytes"] >= 2147483648:
-        print("ii SPLIT: File size is greater than 2GB. Uploading in chunks...")
+        print("ii SPLIT: File size is greater than 2GB. Splitting original file in chunks...")
         subprocess.run(  # WORKS IN MACOS. TO BE TESTED IN LINUX. NEEDS REIMPLEMENTATION FOR WINDOWS.
             [
                 "split",
@@ -271,7 +296,7 @@ for file in files:
                 f"./temp/{file["name"]}.part",
             ]
         )
-        print("ii MD5: Calculating MD5 hashes...")
+        print("ii MD5: Calculating MD5 hashes for all pieces...")
         md5dict = []
         for i, infile in enumerate(sorted(glob.glob('./temp/' + file["name"] + '.part*'))):
             # rename the files to have a 3-digit suffix
@@ -284,9 +309,9 @@ for file in files:
         print("ii MD5: MD5 hashes calculated.")
     else:
         md5dict = []
-        print("ii MD5: Calculating MD5 hashes...")
+        print("ii MD5: Calculating MD5 hash for this file...")
         md5dict.append(hashlib.md5(open(f"{sourceloc}/{file["name"]}", 'rb').read()).hexdigest())
-        print("ii MD5: MD5 hashes calculated.")
+        print("ii MD5: MD5 hash calculated.")
         md5json = json.dumps(md5dict)
         pieces.append(f"{sourceloc}/{file["name"]}")
 
@@ -305,34 +330,20 @@ for file in files:
         # Upload the pieces
         for i, pi in enumerate(pieces):
             print(f"ii PIECE UPLOAD: Uploading piece {pieces.index(pi) + 1} of {len(pieces)}...")
-            data = {
-                "type": "tmpfile",
-                "app_id": "250528",
-                "path": f"{cloudpath}",
-                "uploadid": uploadid,
-                "partseq": i,
-            }
-            response = requests.post(
-                f"{baseurltb.replace('www', 'c-jp')}/rest/2.0/pcs/superfile2?method=upload",
-                headers={"User-Agent": useragent, "Origin": baseurltb, "Content-Type": "multipart/form-data"},
-                cookies=cookies,
-                files={"file": open(pi, "rb")},
-                params=data,
-            )
-            if response.status_code == 200:
-                print(f"ii PIECE UPLOAD: Piece {pieces.index(pi) + 1} of {len(pieces)} uploaded successfully.")
-            else:
-                print(f"!! ERROR: Piece {pieces.index(pi) + 1} of {len(pieces)} upload failed.")
-                print(f"!! ERROR: Server returned status code {response.status_code}.")
-                print(f"!! ERROR: More information: {json.loads(response.text)}")
-                print(f"!! ERROR: Skipping file {file["name"]}...")
-                break
+
+            upresponse = upload_file(pi, uploadid, md5dict[i], i)
+            if upresponse == "failed":
+                continue
+            if upresponse == "mismatch":
+                continue
+
+            print(f"ii PIECE UPLOAD: Piece {pieces.index(pi) + 1} of {len(pieces)} uploaded successfully.")
 
         print("ii PIECE UPLOAD: All pieces uploaded successfully.")
     else:
         print(f"ii UPLOAD: Uploading file {file["name"]}...")
 
-        uploadhash = upload_file(file["name"], uploadid, md5dict[0])
+        uploadhash = upload_file(pieces[0], uploadid, md5dict[0])
         if uploadhash == "failed":
             continue
         if uploadhash == "mismatch":
@@ -368,3 +379,12 @@ for file in files:
             print(f"!! ERROR: More information about this error: {e}")
             continue
 
+    print(f"ii SUCCESS: File {file["name"]} concluded every upload procedure.")
+
+if not errors:
+    print("\nii INFO: All files were uploaded.")
+    #clean_temp()
+    print("ii INFO: Program closing. Have a nice day!")
+else:
+    print("ii INFO: Some files were not uploaded. Please check the logs.")
+    print("\nii INFO: Program closing. Have a nice day!")
