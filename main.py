@@ -1,4 +1,3 @@
-import glob
 import math
 import os
 import json
@@ -8,16 +7,16 @@ import zipfile
 
 import requests
 
-print("-"*97)
+print("-" * 97)
 print("Terabox Uploader CLI v1.0.0 2024")
 print("* Developed by Gonçalo M. (@dnigamer in Github).")
 print("* For more information, please visit https://github.com/dnigamer/TeraboxUploaderCLI.")
 print("* If you find any bugs, please open an issue in the Github repository mentioned in the link above")
-print("-"*97)
+print("-" * 97)
 print("! This program is licensed under the MIT License.")
 print("! This program is provided as-is, without any warranty.")
 print("! This program is not affiliated with Terabox in any way.")
-print("-"*97)
+print("-" * 97)
 
 # CURL INSTALLATION
 CURL_URL = "https://curl.se/windows/dl-8.5.0_5/curl-8.5.0_5-win64-mingw.zip"
@@ -54,7 +53,6 @@ else:
     else:
         print("ii SUCCESS: curl is already installed or exists in the current folder.")
 
-
 # TERABOX AUTHENTICATION
 if not os.path.exists("secrets.json"):
     print("!! ERROR: secrets.json file not found.")
@@ -72,7 +70,6 @@ if not os.path.exists("secrets.json"):
     print("}")
     exit()
 
-print("ii INFO: Loading secrets...")
 with open("secrets.json", "r") as f:
     secrets = json.load(f)
     jstoken = secrets["jstoken"]
@@ -93,7 +90,6 @@ if not os.path.exists("settings.json"):
     print("!! Error: secrets.json file not found.")
     exit()
 
-print("ii INFO: Loading settings...")
 with open("settings.json", "r") as f:
     settings = json.load(f)
     sourceloc = settings["directories"]["sourcedir"]
@@ -123,8 +119,7 @@ if not os.path.exists(movetoloc) and not os.path.isdir(movetoloc) and movefiles:
 print("ii SUCCESS: Loaded settings.")
 
 # PROGRAM INTERNAL VARS
-useragent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
-useragent += "(KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36"
+useragent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 14.2; rv:121.0) Gecko/20100101 Firefox/121.0"
 baseurltb = "https://www.terabox.com"
 temp_directory = "./temp"
 errors = False
@@ -146,7 +141,7 @@ def convert_size(size_bytes: int) -> str:
     return f"{size} {size_name[it]}"
 
 
-def precreate_file(filename: str, md5json: str):
+def precreate_file(filename: str, md5json: str) -> str:
     """
     Precreates a file for upload
     :param filename: The name of the file to precreate in the cloud path including the filepath.
@@ -300,12 +295,9 @@ clean_temp()  # Clean temp directory
 
 # Get member info and check if the user is a VIP
 print("ii VIP: Checking if you are a VIP user...")
-vimemberreq = requests.get(
-    f"{baseurltb}/rest/2.0/membership/proxy/user?method=query",
-    headers={"User-Agent": useragent},
-    cookies=cookies,
-)
-vip = json.loads(vimemberreq.text)["data"]["member_info"]["is_vip"]
+vip = json.loads(requests.get(f"{baseurltb}/rest/2.0/membership/proxy/user?method=query",
+                              headers={"User-Agent": useragent},
+                              cookies=cookies).text)["data"]["member_info"]["is_vip"]
 print(f"ii VIP: You are a {'vip' if vip == 1 else 'non-vip'} user.")
 
 # Loop through files in source directory and add to array
@@ -395,30 +387,23 @@ for file in files:
         # Upload the pieces
         for i, pi in enumerate(pieces):
             print(f"ii PIECE UPLOAD: Uploading piece {pieces.index(pi) + 1} of {len(pieces)}...")
-
             upresponse = upload_file(pi, uploadid, md5dict[i], i)
-            if upresponse == "failed":
+            if upresponse in ("failed", "mismatch"):
                 continue
-            if upresponse == "mismatch":
-                continue
-
             print(f"ii PIECE UPLOAD: Piece {pieces.index(pi) + 1} of {len(pieces)} uploaded successfully.")
-
         print("ii PIECE UPLOAD: All pieces uploaded successfully.")
     else:
         print(f"ii UPLOAD: Uploading file {file["name"]}...")
-
         uploadhash = upload_file(pieces[0], uploadid, md5dict[0])
-        if uploadhash == "failed":
-            continue
-        if uploadhash == "mismatch":
+        if uploadhash in ("failed", "mismatch"):
             continue
 
+    # Create the file on the cloud
     print(f"ii UPLOAD: Finalizing file {file["name"]} upload...")
-    # Create the file
     create = create_file(cloudpath, uploadid, file["sizebytes"], md5json)
     if json.loads(create.text)["errno"] == 0:
-        print(f"ii UPLOAD: File {file["name"]} uploaded successfully.")
+        print(f"ii UPLOAD: File {file["name"]} uploaded and saved on cloud successfully.")
+        print(f"ii UPLOAD: The file is now available at {remoteloc + '/' + file["name"]} in the cloud.")
     else:
         print(f"!! ERROR: File {file["name"]} upload failed.")
         print(f"!! ERROR: More information: {create}")
