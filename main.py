@@ -196,18 +196,30 @@ def upload_file(filename: str, uploadid: str, md5hash: str, partseq: int = 0) ->
     fails, returns "failed".
     """
     try:
-        # TODO: Implement compatibility with Windows. Command is only working with macOS and Linux.
-        out = subprocess.run(["curl", "-X", "POST",
-                              "-H", f"User-Agent:{useragent}",
-                              "-H", f"Origin:{baseurltb}",
-                              "-H", f"Referer:{baseurltb}/main?category=all",
-                              "-H", "Content-Type:multipart/form-data",
-                              "-b", f"{cookies_str}",
-                              "-F", f"file=@{filename}",
-                              f"{baseurltb.replace('www', 'c-jp')}:443/rest/2.0/pcs/superfile2?"
-                              f"method=upload&type=tmpfile&app_id=250528&path={remoteloc + '/' + filename}&"
-                              f"uploadid={uploadid}&partseq={partseq}"],
-                             stdout=subprocess.PIPE)
+        if os.name == "nt":
+            out = subprocess.run(["curl/bin/curl.exe", "-X", "POST",
+                                  "-H", f"User-Agent:{useragent}",
+                                  "-H", f"Origin:{baseurltb}",
+                                  "-H", f"Referer:{baseurltb}/main?category=all",
+                                  "-H", "Content-Type:multipart/form-data",
+                                  "-b", f"{cookies_str}",
+                                  "-F", f"file=@{filename}",
+                                  f"{baseurltb.replace('www', 'c-jp')}:443/rest/2.0/pcs/superfile2?"
+                                  f"method=upload&type=tmpfile&app_id=250528&path={remoteloc + '/' + filename}&"
+                                  f"uploadid={uploadid}&partseq={partseq}"],
+                                 stdout=subprocess.PIPE)
+        else:
+            out = subprocess.run(["curl", "-X", "POST",
+                                  "-H", f"User-Agent:{useragent}",
+                                  "-H", f"Origin:{baseurltb}",
+                                  "-H", f"Referer:{baseurltb}/main?category=all",
+                                  "-H", "Content-Type:multipart/form-data",
+                                  "-b", f"{cookies_str}",
+                                  "-F", f"file=@{filename}",
+                                  f"{baseurltb.replace('www', 'c-jp')}:443/rest/2.0/pcs/superfile2?"
+                                  f"method=upload&type=tmpfile&app_id=250528&path={remoteloc + '/' + filename}&"
+                                  f"uploadid={uploadid}&partseq={partseq}"],
+                                 stdout=subprocess.PIPE)
         uresp = json.loads(out.stdout.decode('utf-8'))
         if 'error_code' not in uresp:
             print(f"ii UPLOAD: File {filename} uploaded successfully.")
@@ -340,33 +352,32 @@ for file in files:
     pieces = []
     if file["sizebytes"] >= 2147483648:
         print("ii SPLIT: File size is greater than 2GB. Splitting original file in chunks...")
-        subprocess.run(  # WORKS IN MACOS. TO BE TESTED IN LINUX. NEEDS REIMPLEMENTATION FOR WINDOWS.
-            [
-                "split",
-                "-b",
-                "120M",
-                "-a",
-                "3",
-                f"{sourceloc}/{file["name"]}",
-                f"./temp/{file["name"]}.part",
-            ]
-        )
-        print("ii MD5: Calculating MD5 hashes for all pieces...")
+        with open(os.path.join(sourceloc, file["name"]), 'rb') as f:
+            content = f.read()
+            f.close()
+
         md5dict = []
-        for i, infile in enumerate(sorted(glob.glob('./temp/' + file["name"] + '.part*'))):
-            # rename the files to have a 3-digit suffix
-            newname = f"./temp/{file["name"]}.part{i:03}"
-            os.rename(infile, newname)
-            md5dict.append(hashlib.md5(open(newname, 'rb').read()).hexdigest())
-            # add the piece file path to the pieces array
-            pieces.append(newname)
+        chunk_size = 120 * 1024 * 1024  # 120MB
+        num_chunks = int(len(content) / chunk_size)
+        print(f"ii SPLIT: File will be split in {num_chunks} chunks.")
+
+        for i in range(num_chunks):
+            start = i * chunk_size
+            end = min((i + 1) * chunk_size, len(content))
+            chunk_filename = f"{os.path.join(temp_directory, f"{file['name']}.part")}{i:03d}"
+            with open(chunk_filename, 'wb') as chunk_file:
+                chunk_file.write(content[start:end])
+                chunk_file.close()
+            with open(chunk_filename, 'rb') as chunk_file:
+                md5dict.append(hashlib.md5(chunk_file.read()).hexdigest())
+                chunk_file.close()
+            pieces.append(chunk_filename)
+
+        print(f"ii SPLIT: File split successfully in {len(pieces)} pieces.")
         md5json = json.dumps(md5dict)
-        print("ii MD5: MD5 hashes calculated.")
     else:
-        md5dict = []
-        print("ii MD5: Calculating MD5 hash for this file...")
-        md5dict.append(hashlib.md5(open(f"{sourceloc}/{file["name"]}", 'rb').read()).hexdigest())
-        print("ii MD5: MD5 hash calculated.")
+        md5dict = [hashlib.md5(open(f"{sourceloc}/{file["name"]}", 'rb').read()).hexdigest()]
+        print(f"ii MD5: MD5 hash calculated for file {file["name"]}.")
         md5json = json.dumps(md5dict)
         pieces.append(f"{sourceloc}/{file["name"]}")
 
@@ -379,7 +390,6 @@ for file in files:
     cloudpath = remoteloc + "/" + file["name"]
 
     if len(pieces) > 1:
-        print(f"ii UPLOAD: Number of pieces to be uploaded: {len(pieces)}")
         print(f"ii PIECE UPLOAD: Commencing upload of file {file["name"]} in pieces...")
 
         # Upload the pieces
@@ -438,7 +448,7 @@ for file in files:
 
 if not errors:
     print("\nii INFO: All files were uploaded.")
-    #clean_temp()
+    clean_temp()
     print("ii INFO: Program closing. Have a nice day!")
 else:
     print("ii INFO: Some files were not uploaded. Please check the logs.")
