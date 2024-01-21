@@ -260,7 +260,7 @@ for file in files:
     pieces = []
     if file["sizebytes"] >= 2147483648:
         print("ii SPLIT: File size is greater than 2GB. Uploading in chunks...")
-        subprocess.run(
+        subprocess.run(  # WORKS IN MACOS. TO BE TESTED IN LINUX. NEEDS REIMPLEMENTATION FOR WINDOWS.
             [
                 "split",
                 "-b",
@@ -327,6 +327,8 @@ for file in files:
                 print(f"!! ERROR: More information: {json.loads(response.text)}")
                 print(f"!! ERROR: Skipping file {file["name"]}...")
                 break
+
+        print("ii PIECE UPLOAD: All pieces uploaded successfully.")
     else:
         print(f"ii UPLOAD: Uploading file {file["name"]}...")
 
@@ -336,13 +338,15 @@ for file in files:
         if uploadhash == "mismatch":
             continue
 
-        create = create_file(cloudpath, uploadid, file["sizebytes"], md5json)
-        if json.loads(create.text)["errno"] == 0:
-            print(f"ii UPLOAD: File {file["name"]} uploaded successfully.")
-        else:
-            print(f"!! ERROR: File {file["name"]} upload failed.")
-            print(f"!! ERROR: More information: {create}")
-            continue
+    print(f"ii UPLOAD: Finalizing file {file["name"]} upload...")
+    # Create the file
+    create = create_file(cloudpath, uploadid, file["sizebytes"], md5json)
+    if json.loads(create.text)["errno"] == 0:
+        print(f"ii UPLOAD: File {file["name"]} uploaded successfully.")
+    else:
+        print(f"!! ERROR: File {file["name"]} upload failed.")
+        print(f"!! ERROR: More information: {create}")
+        continue
 
     if movefiles:
         print(f"ii MOVE: Moving file {sourceloc}/{file["name"]} to {movetoloc}/{file["name"]}...")
@@ -352,11 +356,15 @@ for file in files:
         except Exception as e:
             print(f"!! ERROR: File {file["name"]} could not be moved.")
             print(f"!! ERROR: More information about this error: {e}")
+            continue
+
     if delsrcfil:
-        print(f"ii DELETE: Deleting file {file["name"]}...")
+        print(f"ii DELETE: Deleting file {file["name"]} from source directory...")
         try:
             os.remove(f"{sourceloc}/{file["name"]}")
             print(f"ii DELETE: File {file["name"]} deleted successfully.")
         except Exception as e:
             print(f"!! ERROR: File {file["name"]} could not be deleted.")
             print(f"!! ERROR: More information about this error: {e}")
+            continue
+
