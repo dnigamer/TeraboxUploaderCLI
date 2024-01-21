@@ -4,6 +4,7 @@ import os
 import json
 import subprocess
 import hashlib
+import zipfile
 
 import requests
 
@@ -17,6 +18,41 @@ print("! This program is licensed under the MIT License.")
 print("! This program is provided as-is, without any warranty.")
 print("! This program is not affiliated with Terabox in any way.")
 print("-"*97)
+
+CURL_URL = "https://curl.se/windows/dl-8.5.0_5/curl-8.5.0_5-win64-mingw.zip"
+if os.name == "nt":
+    print("ii DETECT: Windows host detected. Checking if curl is installed...")
+    if not os.path.exists("curl/bin/curl.exe") or not os.path.exists("curl.exe"):
+        print(f"ii INFO: curl.exe not found. Downloading curl from {CURL_URL}...")
+        curlreq = requests.get(CURL_URL)
+        with open("curl.zip", "wb") as f:
+            f.write(curlreq.content)
+            f.close()
+        print("ii INFO: Extracting curl...")
+        with zipfile.ZipFile("curl.zip", "r") as zip_ref:
+            zip_ref.extractall(".")
+            zip_ref.close()
+        os.rename("curl-8.5.0_5-win64-mingw", "curl")
+        print("ii INFO: curl extracted.")
+        os.remove("curl.zip")
+    else:
+        print("ii SUCCESS: curl is already installed or exists in the current folder.")
+else:
+    print("ii DETECT: Non-Windows host detected. Checking if curl is installed...")
+    if not os.path.exists("curl"):
+        print("ii INFO: curl not found. Installing curl...")
+        if os.name == "posix":
+            print("ii INFO: Installing curl using Homebrew...")
+            subprocess.run(["brew", "install", "curl"])
+        elif os.name == "linux":  # Assuming Debian-based distros
+            print("ii INFO: Installing curl using apt...")
+            subprocess.run(["sudo", "apt", "install", "-y", "curl"])
+        else:
+            print("!! ERROR: Your OS is not supported for automatic curl installation. Please install curl manually.")
+            exit()
+    else:
+        print("ii SUCCESS: curl is already installed or exists in the current folder.")
+
 
 # TERABOX AUTHENTICATION
 if not os.path.exists("secrets.json"):
