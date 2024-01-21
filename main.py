@@ -19,6 +19,7 @@ print("! This program is provided as-is, without any warranty.")
 print("! This program is not affiliated with Terabox in any way.")
 print("-"*97)
 
+# CURL INSTALLATION
 CURL_URL = "https://curl.se/windows/dl-8.5.0_5/curl-8.5.0_5-win64-mingw.zip"
 if os.name == "nt":
     print("ii DETECT: Windows host detected. Checking if curl is installed...")
@@ -130,8 +131,12 @@ errors = False
 
 
 # PROGRAM FUNCTIONS
-def convert_size(size_bytes: int):
-    """Converts bytes to human-readable size"""
+def convert_size(size_bytes: int) -> str:
+    """
+    Converts bytes to human-readable size
+    :param size_bytes: The size in bytes to convert.
+    :return: The size as a human-readable string.
+    """
     if size_bytes == 0:
         return "0 B"
     size_name = ("B", "KB", "MB", "GB", "TB")
@@ -141,8 +146,13 @@ def convert_size(size_bytes: int):
     return f"{size} {size_name[it]}"
 
 
-def precreate_file(filenam: str, md5json: str):
-    """Precreates a file for upload"""
+def precreate_file(filename: str, md5json: str):
+    """
+    Precreates a file for upload
+    :param filename: The name of the file to precreate in the cloud path including the filepath.
+    :param md5json: The MD5 hash of the file or full file (if in pieces).
+    :return: The upload ID of the file. If the precreate fails, returns "fail".
+    """
     try:
         preresponse = requests.post(f"{baseurltb}/api/precreate",
                                     headers={"User-Agent": useragent, "Origin": baseurltb,
@@ -155,7 +165,7 @@ def precreate_file(filenam: str, md5json: str):
                                         "channel": "dubox",
                                         "clienttype": "0",
                                         "jsToken": f"{jstoken}",
-                                        "path": f"{remoteloc + "/" + filenam}",
+                                        "path": f"{remoteloc + "/" + filename}",
                                         "autoinit": "1",
                                         "target_path": f"{remoteloc}",
                                         "block_list": f"{md5json}",
@@ -164,9 +174,9 @@ def precreate_file(filenam: str, md5json: str):
             return json.loads(preresponse.text)["uploadid"]
         else:
             print(f"!! ERROR: File precreate failed. Server returned status code {preresponse.status_code}.")
-            if (json.loads(preresponse.text)["errmsg"] == 'need verify' or json.loads(preresponse.text)["errno"] ==
-                    '4000023'):
+            if json.loads(preresponse.text)["errno"] == '4000023':
                 print("!! ERROR: The login session has expired. Please login again and refresh the credentials.")
+                return "fail"
             print(f"!! ERROR: More information: {json.loads(preresponse.text)}")
             return "fail"
     except Exception as e:
@@ -176,7 +186,8 @@ def precreate_file(filenam: str, md5json: str):
 
 
 def upload_file(filename: str, uploadid: str, md5hash: str, partseq: int = 0) -> str:
-    """Uploads a file
+    """
+    Uploads a file
     :param filename: The name of the file to upload in the cloud path including the filepath.
     :param uploadid: The upload ID of the file.
     :param md5hash: The MD5 hash of the file/piece to upload.
@@ -186,7 +197,7 @@ def upload_file(filename: str, uploadid: str, md5hash: str, partseq: int = 0) ->
     """
     try:
         # TODO: Implement compatibility with Windows. Command is only working with macOS and Linux.
-        out = subprocess.run(["curl", "-X", "POST", "--progress-bar",
+        out = subprocess.run(["curl", "-X", "POST",
                               "-H", f"User-Agent:{useragent}",
                               "-H", f"Origin:{baseurltb}",
                               "-H", f"Referer:{baseurltb}/main?category=all",
@@ -217,6 +228,14 @@ def upload_file(filename: str, uploadid: str, md5hash: str, partseq: int = 0) ->
 
 
 def create_file(cloudpath: str, uploadid: str, sizebytes: int, md5json: str) -> requests.Response:
+    """
+    Creates a file on the cloud
+    :param cloudpath: Cloud path of the file to create.
+    :param uploadid: The upload ID of the file requested previously.
+    :param sizebytes: The size of the file in bytes.
+    :param md5json: The MD5 hash of the file or full file (if in pieces).
+    :return: The response of the create file request.
+    """
     crresponse = requests.post(
         f"{baseurltb}/api/create",
         headers={"User-Agent": useragent, "Origin": baseurltb, "Content-Type": "application/x-www"
@@ -240,8 +259,11 @@ def create_file(cloudpath: str, uploadid: str, sizebytes: int, md5json: str) -> 
     return crresponse
 
 
-def clean_temp():
-    """Cleans the temp folder"""
+def clean_temp() -> bool:
+    """
+    Cleans the temp folder
+    :return: True if the temp folder was cleaned successfully, False otherwise.
+    """
     if os.path.exists(temp_directory):
         print("ii INFO: Cleaning up temp directory...")
         for filename in os.listdir(temp_directory):
@@ -271,8 +293,7 @@ vimemberreq = requests.get(
     headers={"User-Agent": useragent},
     cookies=cookies,
 )
-member_info = json.loads(vimemberreq.text)["data"]["member_info"]
-vip = member_info["is_vip"]
+vip = json.loads(vimemberreq.text)["data"]["member_info"]["is_vip"]
 print(f"ii VIP: You are a {'vip' if vip == 1 else 'non-vip'} user.")
 
 # Loop through files in source directory and add to array
@@ -297,8 +318,6 @@ for file in files:
         cookies=cookies,
     )
     quota = json.loads(quotareq.text)
-    totquot = quota["total"]  # total quota available
-    usequot = quota["used"]  # used quota
     aviquot = quota['total'] - quota['used']  # available quota
 
     print(f"ii INFO: Available quota: {convert_size(aviquot)}")
