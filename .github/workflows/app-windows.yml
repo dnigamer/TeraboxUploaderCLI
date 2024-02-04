@@ -1,0 +1,35 @@
+name: Build Windows Executable
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: 3.12
+
+    - name: Install dependencies
+      run: |
+        pip install pyinstaller
+        pip install -r requirements.tx
+
+    - name: Build Windows Executable
+      run: |
+        pyinstaller --onefile main.py
+        mv dist/main.exe dist/TeraboxUploaderCLI.exe
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v2
+      with:
+        name: TeraboxUploaderCLI.exe
+        path: dist/
