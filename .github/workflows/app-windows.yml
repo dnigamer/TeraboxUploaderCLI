@@ -21,7 +21,11 @@ jobs:
     - name: Install dependencies
       run: |
         pip install pyinstaller
+<<<<<<< HEAD
         pip install -r requirements.txt
+=======
+        pip install -r requirements.tx
+>>>>>>> origin/main
 
     - name: Build Windows Executable
       run: |
