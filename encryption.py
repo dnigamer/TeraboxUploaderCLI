@@ -93,7 +93,7 @@ class Encryption:
             raise EncryptFileException(f"Something went wrong when encrypting file: {e}")
 
         try:
-            with open(os.path.join(sourcefil, f"{filename}.enc"), 'wb') as encrypted_file:
+            with open(os.path.join("temp", f"{filename}.enc"), 'wb') as encrypted_file:
                 encrypted_file.write(encrypted)
         except Exception as e:
             raise EncryptFileException(f"Something went wrong when writing encrypted file: {e}")

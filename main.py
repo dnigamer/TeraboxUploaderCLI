@@ -4,6 +4,9 @@ import json
 import subprocess
 import hashlib
 import zipfile
+from urllib.parse import quote_plus
+
+from encryption import Encryption
 
 import requests
 
@@ -38,8 +41,8 @@ if os.name == "nt":
     else:
         print("ii SUCCESS: curl is already installed or exists in the current folder.")
 else:
-    print("ii DETECT: Non-Windows host detected. Checking if curl is installed...")
-    if not os.path.exists("curl"):
+    print("ii DETECT: Checking for curl...")
+    if not subprocess.run(["which", "curl"], stdout=subprocess.PIPE).stdout.decode('utf-8'):
         print("ii INFO: curl not found. Installing curl...")
         if os.name == "posix":
             print("ii INFO: Installing curl using Homebrew...")
@@ -51,7 +54,7 @@ else:
             print("!! ERROR: Your OS is not supported for automatic curl installation. Please install curl manually.")
             exit()
     else:
-        print("ii SUCCESS: curl is already installed or exists in the current folder.")
+        print("ii DETECT: curl is already installed or exists in the current folder.")
 
 # TERABOX AUTHENTICATION
 if not os.path.exists("secrets.json"):
@@ -97,6 +100,8 @@ with open("settings.json", "r") as f:
     movetoloc = settings["directories"]["uploadeddir"]
     movefiles = True if settings["settings"]["movefiles"] == "true" else False
     delsrcfil = True if settings["settings"]["deletesource"] == "true" else False
+    encryptfl = True if settings["settings"]["encryption"] == "true" else False
+    encrypkey = settings["settings"]["encryptionkey"]
     f.close()
 
 if delsrcfil and movefiles:
@@ -115,6 +120,17 @@ if not os.path.exists(sourceloc) and not os.path.isdir(sourceloc):
 if not os.path.exists(movetoloc) and not os.path.isdir(movetoloc) and movefiles:
     print("!! ERROR: Move to directory does not exist. Please check the path.")
     exit()
+
+if not encryptfl:
+    print("ii WARN: File encryption is disabled. However, it is recommended to enable it for security reasons.")
+    print("ii WARN: For security of your files, please enable file encryption in the settings.json file.")
+
+encrypt = Encryption()
+
+if encryptfl and not os.path.exists(encrypkey):
+    print("ii INFO: Generating encryption key...")
+    encrypt.generate_key(encrypkey)
+    print("ii SUCCESS: Encryption key generated successfully.")
 
 print("ii SUCCESS: Loaded settings.")
 
@@ -168,8 +184,8 @@ def precreate_file(filename: str, md5json: str) -> str:
         if "uploadid" in preresponse.text:
             return json.loads(preresponse.text)["uploadid"]
         else:
-            print(f"!! ERROR: File precreate failed. Server returned status code {preresponse.status_code}.")
-            if json.loads(preresponse.text)["errno"] == '4000023':
+            print(f"!! ERROR: File precreate failed.")
+            if json.loads(preresponse.text)["errmsg"] == 'need verify':
                 print("!! ERROR: The login session has expired. Please login again and refresh the credentials.")
                 return "fail"
             print(f"!! ERROR: More information: {json.loads(preresponse.text)}")
@@ -200,7 +216,7 @@ def upload_file(filename: str, uploadid: str, md5hash: str, partseq: int = 0) ->
                                   "-b", f"{cookies_str}",
                                   "-F", f"file=@{filename}",
                                   f"{baseurltb.replace('www', 'c-jp')}:443/rest/2.0/pcs/superfile2?"
-                                  f"method=upload&type=tmpfile&app_id=250528&path={remoteloc + '/' + filename}&"
+                                  f"method=upload&type=tmpfile&app_id=250528&path={quote_plus(remoteloc + '/' + filename)}&"
                                   f"uploadid={uploadid}&partseq={partseq}"],
                                  stdout=subprocess.PIPE)
         else:
@@ -212,7 +228,7 @@ def upload_file(filename: str, uploadid: str, md5hash: str, partseq: int = 0) ->
                                   "-b", f"{cookies_str}",
                                   "-F", f"file=@{filename}",
                                   f"{baseurltb.replace('www', 'c-jp')}:443/rest/2.0/pcs/superfile2?"
-                                  f"method=upload&type=tmpfile&app_id=250528&path={remoteloc + '/' + filename}&"
+                                  f"method=upload&type=tmpfile&app_id=250528&path={quote_plus(remoteloc + '/' + filename)}&"
                                   f"uploadid={uploadid}&partseq={partseq}"],
                                  stdout=subprocess.PIPE)
         uresp = json.loads(out.stdout.decode('utf-8'))
@@ -310,9 +326,37 @@ for filename in os.listdir(sourceloc):
             continue
         fsizebytes = os.path.getsize(os.path.join(sourceloc, filename))
         print(f" - {filename} ({convert_size(fsizebytes)})")
-        files.append({"name": filename, "sizebytes": fsizebytes})
+        files.append({"name": filename, "sizebytes": fsizebytes, "encrypted": False, "encrypterror": False})
+
+# ENCRYPTION (IF ENABLED)
+if encryptfl:
+    print(f"\n/\\ ENCRYPT: Encrypting files in {sourceloc}...")
+    for file in files:
+        print(f"ii ENCRYPT: Encrypting file {file['name']}...")
+        try:
+            encrypt.encrypt_file(encrypkey, sourceloc, file["name"])
+            file["name"] = f"{file['name']}.enc"
+            file["sizebytes"] = os.path.getsize(os.path.join(temp_directory, file["name"]))
+            file["encrypted"] = True
+            print(f"ii ENCRYPT: File {file['name']} encrypted successfully.")
+        except Exception as e:
+            print(f"!! ERROR: File {file['name']} encryption failed.")
+            print(f"!! ERROR: More information about this error: {e}")
+            file["encrypterror"] = True
+            errors = True
+            continue
+
 
 for file in files:
+    if file["encrypted"]:
+        if file["encrypterror"]:
+            continue
+        sourceloc = temp_directory
+        print(f"ii INFO: File {file["name"]} is encrypted. Using source directory as {temp_directory}.")
+    else:
+        sourceloc = settings["directories"]["sourcedir"]
+        print(f"ii INFO: File {file["name"]} is not encrypted. Using source directory as {sourceloc}.")
+
     print(f"\n/\\ UPLOAD: Uploading {file['name']}...")
 
     # QUOTA CALCULATIONS
