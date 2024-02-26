@@ -28,47 +28,47 @@ class Formatting:
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S') if self.timestamps else ''
         return f"{self.style.BRIGHT}{self.fore.WHITE}[{timestamp}]{self.style.RESET_ALL}"
 
-    def error(self, msg_type: str, message: str) -> str:
+    def error(self, msg_type: str, message: str) -> None:
         """
         This method is used to format a error message.
         :param msg_type: Add a classification to the logged message.
         :param message: The error message.
         :return:
         """
-        return f"{self.timestamp()} {self.fore.RED}ERROR: {msg_type}{self.style.RESET_ALL}{message}"
+        return print(f"{self.timestamp()}{self.fore.RED} {msg_type.upper()} ERROR: {self.style.RESET_ALL}{message}")
 
-    def warning(self, msg_type: str, message: str) -> str:
+    def warning(self, msg_type: str, message: str) -> None:
         """
         This method is used to format a warning message.
         :param msg_type: Add a classification to the logged message.
         :param message: The warning message.
         :return:
         """
-        return f"{self.timestamp()} {self.fore.YELLOW}WARNING: {msg_type}{self.style.RESET_ALL}{message}"
+        return print(f"{self.timestamp()}{self.fore.YELLOW} {msg_type.upper()} WARNING: {self.style.RESET_ALL}{message}")
 
-    def success(self, msg_type: str, message: str) -> str:
+    def success(self, msg_type: str, message: str) -> None:
         """
         This method is used to format a success message.
         :param msg_type: Add a classification to the logged message.
         :param message: The success message.
         :return:
         """
-        return f"{self.timestamp()} {self.fore.GREEN}SUCCESS: {msg_type}{self.style.RESET_ALL}{message}"
+        return print(f"{self.timestamp()}{self.fore.GREEN} {msg_type.upper()} SUCCESS: {self.style.RESET_ALL}{message}")
 
-    def info(self, msg_type: str, message: str) -> str:
+    def info(self, msg_type: str, message: str) -> None:
         """
         This method is used to format an info message.
         :param msg_type: Add a classification to the logged message.
         :param message: The info message.
         :return:
         """
-        return f"{self.timestamp()} {self.fore.CYAN}INFO: {msg_type}{self.style.RESET_ALL}{message}"
+        return print(f"{self.timestamp()}{self.fore.CYAN} {msg_type.upper()} INFO: {self.style.RESET_ALL}{message}")
 
-    def debug(self, msg_type: str, message: str) -> str:
+    def debug(self, msg_type: str, message: str) -> None:
         """
         This method is used to format a debug message.
         :param msg_type: Add a classification to the logged message.
         :param message: The debug message.
         :return:
         """
-        return f"{self.timestamp()} {self.fore.MAGENTA}DEBUG: {msg_type}{self.style.RESET_ALL}{message}"
+        return print(f"{self.timestamp()}{self.fore.MAGENTA} {msg_type.upper()} DEBUG: {self.style.RESET_ALL}{message}")
