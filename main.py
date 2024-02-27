@@ -5,10 +5,13 @@ import subprocess
 import hashlib
 import zipfile
 from urllib.parse import quote_plus
-
-from encryption import Encryption
+from modules.encryption import Encryption
+from modules.formatting import Formatting
 
 import requests
+
+fmt = Formatting(timestamps=True)
+
 
 print("-" * 97)
 print("Terabox Uploader CLI v1.0.0 2024")
@@ -24,53 +27,53 @@ print("-" * 97)
 # CURL INSTALLATION
 CURL_URL = "https://curl.se/windows/dl-8.5.0_5/curl-8.5.0_5-win64-mingw.zip"
 if os.name == "nt":
-    print("ii DETECT: Windows host detected. Checking if curl is installed...")
+    fmt.info("CURL", "Windows host detected. Checking if curl is installed...")
     if not os.path.exists("curl/bin/curl.exe") or not os.path.exists("curl.exe"):
-        print(f"ii INFO: curl.exe not found. Downloading curl from {CURL_URL}...")
+        fmt.info("CURL", f"curl.exe not found. Downloading curl from {CURL_URL}...")
         curlreq = requests.get(CURL_URL)
         with open("curl.zip", "wb") as f:
             f.write(curlreq.content)
             f.close()
-        print("ii INFO: Extracting curl...")
+        fmt.info("CURL", "Extracting curl...")
         with zipfile.ZipFile("curl.zip", "r") as zip_ref:
             zip_ref.extractall(".")
             zip_ref.close()
         os.rename("curl-8.5.0_5-win64-mingw", "curl")
-        print("ii INFO: curl extracted.")
+        fmt.info("CURL", "Curl extracted.")
         os.remove("curl.zip")
     else:
-        print("ii SUCCESS: curl is already installed or exists in the current folder.")
+        fmt.success("CURL", "curl is already installed or exists in the current folder.")
 else:
-    print("ii DETECT: Checking for curl...")
+    fmt.info("CURL", "Checking for curl...")
     if not subprocess.run(["which", "curl"], stdout=subprocess.PIPE).stdout.decode('utf-8'):
-        print("ii INFO: curl not found. Installing curl...")
+        fmt.info("CURL", "ii INFO: curl not found. Installing curl...")
         if os.name == "posix":
-            print("ii INFO: Installing curl using Homebrew...")
+            fmt.info("CURL", "ii INFO: Installing curl using Homebrew...")
             subprocess.run(["brew", "install", "curl"])
         elif os.name == "linux":  # Assuming Debian-based distros
-            print("ii INFO: Installing curl using apt...")
+            fmt.info("CURL", "ii INFO: Installing curl using apt...")
             subprocess.run(["sudo", "apt", "install", "-y", "curl"])
         else:
-            print("!! ERROR: Your OS is not supported for automatic curl installation. Please install curl manually.")
+            fmt.error("CURL", "Your OS is not supported for automatic curl installation. Please install curl manually.")
             exit()
     else:
-        print("ii DETECT: curl is already installed or exists in the current folder.")
+        fmt.info("CURL", "Curl is already installed or exists in the current folder.")
 
 # TERABOX AUTHENTICATION
 if not os.path.exists("secrets.json"):
-    print("!! ERROR: secrets.json file not found.")
-    print("!! ERROR: Please create a secrets.json file with the following format:")
-    print("{")
-    print('    "jstoken": "your jstoken token",')
-    print('    "bdstoken": "your bdstoken token",')
-    print('    "cookies": {')
-    print('        "csrfToken": "your csrfToken token",')
-    print('        "browserid": "your browserid",')
-    print('        "lang": "your lang (NOT REQUIRED)",')
-    print('        "ndus": "your ndus token",')
-    print('        "ndut_fmt": "your ndut_fmt token",')
-    print('    }')
-    print("}")
+    fmt.error("auth", "secrets.json file not found.")
+    fmt.error("auth", "Please create a secrets.json file with the following format:")
+    fmt.error("auth", "{")
+    fmt.error("auth", '    "jstoken": "your jstoken token",')
+    fmt.error("auth", '    "bdstoken": "your bdstoken token",')
+    fmt.error("auth", '    "cookies": {')
+    fmt.error("auth", '        "csrfToken": "your csrfToken token",')
+    fmt.error("auth", '        "browserid": "your browserid",')
+    fmt.error("auth", '        "lang": "your lang (NOT REQUIRED)",')
+    fmt.error("auth", '        "ndus": "your ndus token",')
+    fmt.error("auth", '        "ndut_fmt": "your ndut_fmt token",')
+    fmt.error("auth", '    }')
+    fmt.error("auth", "}")
     exit()
 
 with open("secrets.json", "r") as f:
@@ -84,13 +87,13 @@ with open("secrets.json", "r") as f:
     f.close()
 
 if not (any(char.isdigit() for char in jstoken) and any(char.isdigit() for char in bdstoken)):
-    print("!! ERROR: Invalid token.")
+    fmt.error("auth", "Invalid jstoken or bdstoken.")
     exit()
-print("ii SUCCESS: Loaded secrets.")
+fmt.success("auth", "Loaded authentication tokens.")
 
 # PROGRAM CONFIGURATION
 if not os.path.exists("settings.json"):
-    print("!! Error: secrets.json file not found.")
+    fmt.error("settings", "settings.json file not found.")
     exit()
 
 with open("settings.json", "r") as f:
@@ -105,34 +108,35 @@ with open("settings.json", "r") as f:
     f.close()
 
 if delsrcfil and movefiles:
-    print("!! ERROR: You cannot have move and delete files settings configured as true at the same time.")
-    print("!! ERROR: Please check your settings.json file for these configurations.")
+    fmt.error("settings", "You cannot have move and delete files settings configured as true at the same time.")
+    fmt.error("settings", "Please check your settings.json file for these configurations.")
     exit()
 
 if not sourceloc or not remoteloc or not movetoloc:
-    print("!! ERROR: Invalid directory paths.")
+    fmt.error("settings", "Invalid directory paths.")
     exit()
 
 if not os.path.exists(sourceloc) and not os.path.isdir(sourceloc):
-    print("!! ERROR: Source directory does not exist. Please check the path.")
+    fmt.error("settings", "Source directory does not exist. Please check the path.")
     exit()
 
 if not os.path.exists(movetoloc) and not os.path.isdir(movetoloc) and movefiles:
-    print("!! ERROR: Move to directory does not exist. Please check the path.")
+    fmt.error("settings", "Move to directory does not exist. Please check the path.")
     exit()
 
 if not encryptfl:
-    print("ii WARN: File encryption is disabled. However, it is recommended to enable it for security reasons.")
-    print("ii WARN: For security of your files, please enable file encryption in the settings.json file.")
+    fmt.warning("encryption", "File encryption is disabled. However, it is recommended to enable it for security "
+                              "reasons.")
+    fmt.warning("encryption", "For security of your files, please enable file encryption in the settings.json file.")
 
 encrypt = Encryption()
 
 if encryptfl and not os.path.exists(encrypkey):
-    print("ii INFO: Generating encryption key...")
+    fmt.info("encryption", "Generating encryption key...")
     encrypt.generate_key(encrypkey)
-    print("ii SUCCESS: Encryption key generated successfully.")
+    fmt.success("encryption", "Encryption key generated successfully.")
 
-print("ii SUCCESS: Loaded settings.")
+fmt.success("settings", "Loaded settings.")
 
 # PROGRAM INTERNAL VARS
 useragent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 14.2; rv:121.0) Gecko/20100101 Firefox/121.0"
@@ -184,15 +188,15 @@ def precreate_file(filename: str, md5json: str) -> str:
         if "uploadid" in preresponse.text:
             return json.loads(preresponse.text)["uploadid"]
         else:
-            print(f"!! ERROR: File precreate failed.")
+            fmt.error("precreate", "File precreate failed.")
             if json.loads(preresponse.text)["errmsg"] == 'need verify':
-                print("!! ERROR: The login session has expired. Please login again and refresh the credentials.")
+                fmt.error("precreate", "The login session has expired. Please login again and refresh the credentials.")
                 return "fail"
-            print(f"!! ERROR: More information: {json.loads(preresponse.text)}")
+            fmt.error("precreate", "ERROR: More information: {json.loads(preresponse.text)}")
             return "fail"
     except Exception as e:
-        print(f"!! ERROR: File precreate request failed.")
-        print(f"!! ERROR: More information about this error: {e}")
+        fmt.error("precreate", "ERROR: File precreate request failed.")
+        fmt.error("precreate", "ERROR: More information about this error: {e}")
         return "fail"
 
 
@@ -233,20 +237,20 @@ def upload_file(filename: str, uploadid: str, md5hash: str, partseq: int = 0) ->
                                  stdout=subprocess.PIPE)
         uresp = json.loads(out.stdout.decode('utf-8'))
         if 'error_code' not in uresp:
-            print(f"ii UPLOAD: File {filename} uploaded successfully.")
+            fmt.success("upload", f"File {filename} uploaded successfully.")
             if uresp["md5"] == md5hash:
-                print(f"ii MD5: MD5 hash match for file {filename} after upload.")
+                fmt.info("md5", f"MD5 hash match for file {filename} after upload.")
                 return uresp["md5"]
             else:
-                print(f"ii ERROR: MD5 hash mismatch for file {filename} after upload. Skipping file...")
+                fmt.error("md5", f"MD5 hash mismatch for file {filename} after upload. Skipping file...")
                 return "mismatch"
         else:
-            print(f"!! ERROR: File upload failed.")
-            print(f"!! ERROR: More information: {uresp}")
+            fmt.error("upload", "File upload failed.")
+            fmt.error("upload", f"ERROR: More information: {uresp}")
             return "failed"
     except Exception as e:
-        print(f"!! ERROR: File upload request failed.")
-        print(f"!! ERROR: More information about this error: {e}")
+        fmt.error("upload", "File upload request failed.")
+        fmt.error("upload", f"More information about this error: {e}")
         return "failed"
 
 
@@ -288,60 +292,66 @@ def clean_temp() -> bool:
     :return: True if the temp folder was cleaned successfully, False otherwise.
     """
     if os.path.exists(temp_directory):
-        print("ii INFO: Cleaning up temp directory...")
+        fmt.info("temp", "Cleaning up temp directory...")
         for filename in os.listdir(temp_directory):
             file_path = os.path.join(temp_directory, filename)
             try:
                 os.remove(file_path)
             except Exception as e:
-                print(f"!! ERROR: File {filename} could not be deleted.")
-                print(f"!! ERROR: More information about this error: {e}")
+                fmt.error("temp", f"File {filename} could not be deleted.")
+                fmt.error("temp", f"More information about this error: {e}")
                 return False
-        print("ii SUCCESS: Temp directory cleared.")
+        fmt.success("temp", "Temp directory cleared.")
         return True
     else:
-        print("ii INFO: Creating temp directory...")
+        fmt.info("temp", "Creating temp directory...")
         os.mkdir(temp_directory)
-        print("ii SUCCESS: Temp directory created.")
+        fmt.success("temp", "Temp directory created.")
         return True
 
 
 # PROGRAM START
 clean_temp()  # Clean temp directory
 
+
 # Get member info and check if the user is a VIP
-print("ii VIP: Checking if you are a VIP user...")
+fmt.info("vip", "Checking if you are a VIP user...")
 vip = json.loads(requests.get(f"{baseurltb}/rest/2.0/membership/proxy/user?method=query",
                               headers={"User-Agent": useragent},
                               cookies=cookies).text)["data"]["member_info"]["is_vip"]
-print(f"ii VIP: You are a {'vip' if vip == 1 else 'non-vip'} user.")
+fmt.success("vip", f"You are a {'vip' if vip == 1 else 'non-vip'} user.")
+
 
 # Loop through files in source directory and add to array
 files = []
-print("\nii INFO: Files to upload:")
+fmt.info("upload", "Files to upload:")
 for filename in os.listdir(sourceloc):
     if os.path.isfile(os.path.join(sourceloc, filename)):
-        if filename in [".DS_Store", "main.py", "settings.json", "secrets.json"]:
-            print(f"ii INFO: Skipping file {filename} because it's a protected file.")
+        if filename in [".DS_Store", os.path.basename(__file__), "settings.json", "secrets.json"]:
+            fmt.warning("upload", f"Skipping file {filename} because it's a protected file.")
             continue
         fsizebytes = os.path.getsize(os.path.join(sourceloc, filename))
-        print(f" - {filename} ({convert_size(fsizebytes)})")
+        fmt.info("upload", f" - {filename} ({convert_size(fsizebytes)})")
         files.append({"name": filename, "sizebytes": fsizebytes, "encrypted": False, "encrypterror": False})
+
 
 # ENCRYPTION (IF ENABLED)
 if encryptfl:
-    print(f"\n/\\ ENCRYPT: Encrypting files in {sourceloc}...")
+    if len(files) == 0:
+        fmt.success("encrypt", "No files to encrypt.")
+        pass
+    fmt.info("encrypt", f"Encrypting files in {sourceloc}...")
     for file in files:
-        print(f"ii ENCRYPT: Encrypting file {file['name']}...")
+        fmt.info("encrypt", f"Encrypting file {file['name']}...")
         try:
             encrypt.encrypt_file(encrypkey, sourceloc, file["name"])
             file["name"] = f"{file['name']}.enc"
             file["sizebytes"] = os.path.getsize(os.path.join(temp_directory, file["name"]))
             file["encrypted"] = True
-            print(f"ii ENCRYPT: File {file['name']} encrypted successfully.")
+            fmt.info("encrypt", f"File {file['name']} encrypted successfully.")
         except Exception as e:
-            print(f"!! ERROR: File {file['name']} encryption failed.")
-            print(f"!! ERROR: More information about this error: {e}")
+            fmt.error("encrypt", f"File {file['name']} encryption failed.")
+            fmt.error("encrypt", f"More information about this error: {e}")
             file["encrypterror"] = True
             errors = True
             continue
@@ -352,12 +362,12 @@ for file in files:
         if file["encrypterror"]:
             continue
         sourceloc = temp_directory
-        print(f"ii INFO: File {file["name"]} is encrypted. Using source directory as {temp_directory}.")
+        fmt.info("file", f"File {file["name"]} is encrypted. Using source directory as {temp_directory}.")
     else:
         sourceloc = settings["directories"]["sourcedir"]
-        print(f"ii INFO: File {file["name"]} is not encrypted. Using source directory as {sourceloc}.")
+        fmt.info("file", f"File {file["name"]} is not encrypted. Using source directory as {sourceloc}.")
 
-    print(f"\n/\\ UPLOAD: Uploading {file['name']}...")
+    fmt.info("upload", f"Uploading {file['name']}...")
 
     # QUOTA CALCULATIONS
     quotareq = requests.get(
@@ -368,26 +378,26 @@ for file in files:
     quota = json.loads(quotareq.text)
     aviquot = quota['total'] - quota['used']  # available quota
 
-    print(f"ii INFO: Available quota: {convert_size(aviquot)}")
+    fmt.info("quota", f"Available quota: {convert_size(aviquot)}")
     if aviquot < file["sizebytes"]:
-        print(f"!! ERROR: not enough quota available for file {file["name"]}.")
+        fmt.error("quota", f"Not enough quota available for file {file["name"]}.")
         continue
-    print(f"ii INFO: Available quota after the upload: {convert_size(aviquot - file["sizebytes"])}")
+    fmt.info("quota", f"Available quota after the upload: {convert_size(aviquot - file["sizebytes"])}")
 
     # UPLOAD PROCEDURE
     if not os.path.exists(f"{sourceloc}/{file["name"]}"):
-        print(f"!! ERROR: File {file["name"]} does not exist on source directory anymore. Skipping file...")
+        fmt.error("upload", f"File {file["name"]} does not exist on the source directory anymore. Skipping file...")
         continue
 
     if (vip == 1 and file["sizebytes"] >= 21474836479) or (vip == 0 and file["sizebytes"] >= 4294967296):
-        print(f"!! ERROR: File {file["name"]} is too big for the type of account you have. Skipping file...")
-        print(f"!! ERROR: File size: {convert_size(file["sizebytes"])}")
-        print(f"!! ERROR: Maximum file size for your account: {'20GB' if vip == 1 else '4GB'}")
+        fmt.error("upload", f"File {file["name"]} is too big for the type of account you have. Skipping file...")
+        fmt.error("upload", f"File size: {convert_size(file["sizebytes"])}")
+        fmt.error("upload", f"Maximum file size for your account: {'20GB' if vip == 1 else '4GB'}")
         continue
 
     pieces = []
     if file["sizebytes"] >= 2147483648:
-        print("ii SPLIT: File size is greater than 2GB. Splitting original file in chunks...")
+        fmt.info("split", "File size is greater than 2GB. Splitting original file in chunks...")
         with open(os.path.join(sourceloc, file["name"]), 'rb') as f:
             content = f.read()
             f.close()
@@ -395,7 +405,7 @@ for file in files:
         md5dict = []
         chunk_size = 120 * 1024 * 1024  # 120MB
         num_chunks = int(len(content) / chunk_size)
-        print(f"ii SPLIT: File will be split in {num_chunks} chunks.")
+        fmt.info("split", f"File will be split in {num_chunks} chunks.")
 
         for i in range(num_chunks):
             start = i * chunk_size
@@ -409,76 +419,76 @@ for file in files:
                 chunk_file.close()
             pieces.append(chunk_filename)
 
-        print(f"ii SPLIT: File split successfully in {len(pieces)} pieces.")
+        fmt.success("split", f"File split successfully in {len(pieces)} pieces.")
         md5json = json.dumps(md5dict)
     else:
         md5dict = [hashlib.md5(open(f"{sourceloc}/{file["name"]}", 'rb').read()).hexdigest()]
-        print(f"ii MD5: MD5 hash calculated for file {file["name"]}.")
+        fmt.info("md5", f"MD5 hash calculated for file {file["name"]}.")
         md5json = json.dumps(md5dict)
         pieces.append(f"{sourceloc}/{file["name"]}")
 
     # Preinitialize the full file on the cloud
-    print("ii PRECREATE: Precreating file...")
+    fmt.info("precreate", "Precreating file...")
     uploadid = precreate_file(file["name"], md5json)
     if uploadid == "fail":
         continue
-    print(f"ii PRECREATE: Precreate for upload ID \"{uploadid}\" successful.")
+    fmt.success("precreate", f"Precreate for upload ID \"{uploadid}\" successful.")
     cloudpath = remoteloc + "/" + file["name"]
 
     if len(pieces) > 1:
-        print(f"ii PIECE UPLOAD: Commencing upload of file {file["name"]} in pieces...")
+        fmt.info("split upload", f"Commencing upload of file {file["name"]} in pieces...")
 
         # Upload the pieces
         for i, pi in enumerate(pieces):
-            print(f"ii PIECE UPLOAD: Uploading piece {pieces.index(pi) + 1} of {len(pieces)}...")
+            fmt.info("split upload", f"Uploading piece {pieces.index(pi) + 1} of {len(pieces)}...")
             upresponse = upload_file(pi, uploadid, md5dict[i], i)
             if upresponse in ("failed", "mismatch"):
                 continue
-            print(f"ii PIECE UPLOAD: Piece {pieces.index(pi) + 1} of {len(pieces)} uploaded successfully.")
-        print("ii PIECE UPLOAD: All pieces uploaded successfully.")
+            fmt.info("split upload", f"Piece {pieces.index(pi) + 1} of {len(pieces)} uploaded successfully.")
+        fmt.success("split upload", f"All pieces uploaded successfully.")
     else:
-        print(f"ii UPLOAD: Uploading file {file["name"]}...")
+        fmt.info("upload", f"Uploading file {file["name"]}...")
         uploadhash = upload_file(pieces[0], uploadid, md5dict[0])
         if uploadhash in ("failed", "mismatch"):
             continue
 
     # Create the file on the cloud
-    print(f"ii UPLOAD: Finalizing file {file["name"]} upload...")
+    fmt.info("upload", f"Finalizing file {file["name"]} upload...")
     create = create_file(cloudpath, uploadid, file["sizebytes"], md5json)
     if json.loads(create.text)["errno"] == 0:
-        print(f"ii UPLOAD: File {file["name"]} uploaded and saved on cloud successfully.")
-        print(f"ii UPLOAD: The file is now available at {remoteloc + '/' + file["name"]} in the cloud.")
+        fmt.success("upload", f"File {file["name"]} uploaded and saved on cloud successfully.")
+        fmt.success("upload", f"The file is now available at {remoteloc + '/' + file["name"]} in the cloud.")
     else:
-        print(f"!! ERROR: File {file["name"]} upload failed.")
-        print(f"!! ERROR: More information: {create}")
+        fmt.error("upload", f"File {file["name"]} upload failed.")
+        fmt.error("upload", f"More information: {create}")
         continue
 
     if movefiles:
-        print(f"ii MOVE: Moving file {sourceloc}/{file["name"]} to {movetoloc}/{file["name"]}...")
+        fmt.info("move", f"Moving file {sourceloc}/{file["name"]} to {movetoloc}/{file["name"]}...")
         try:
             os.rename(f"{sourceloc}/{file["name"]}", f"{movetoloc}/{file["name"]}")
-            print(f"ii MOVE: File {file["name"]} moved successfully to destination.")
+            fmt.success("move", f"File {file["name"]} moved successfully to destination.")
         except Exception as e:
-            print(f"!! ERROR: File {file["name"]} could not be moved.")
-            print(f"!! ERROR: More information about this error: {e}")
+            fmt.error("move", f"File {file["name"]} could not be moved.")
+            fmt.error("move", f"More information about this error: {e}")
             continue
 
     if delsrcfil:
-        print(f"ii DELETE: Deleting file {file["name"]} from source directory...")
+        fmt.info("delete", f"Deleting file {file["name"]} from source directory...")
         try:
             os.remove(f"{sourceloc}/{file["name"]}")
-            print(f"ii DELETE: File {file["name"]} deleted successfully.")
+            fmt.success("delete", f"File {file["name"]} deleted successfully.")
         except Exception as e:
-            print(f"!! ERROR: File {file["name"]} could not be deleted.")
-            print(f"!! ERROR: More information about this error: {e}")
+            fmt.error("delete", f"File {file["name"]} could not be deleted.")
+            fmt.error("delete", f"More information about this error: {e}")
             continue
 
-    print(f"ii SUCCESS: File {file["name"]} concluded every upload procedure.")
+    fmt.success("upload", f"File {file["name"]} concluded every upload procedure.")
 
 if not errors:
-    print("\nii INFO: All files were uploaded.")
+    fmt.success("upload", "All files were uploaded.")
     clean_temp()
-    print("ii INFO: Program closing. Have a nice day!")
+    fmt.success("program", "Program closing. Have a nice day!")
 else:
-    print("ii INFO: Some files were not uploaded. Please check the logs.")
-    print("\nii INFO: Program closing. Have a nice day!")
+    fmt.warning("upload", "Some files were not uploaded. Please check the logs.")
+    fmt.success("program", "Program closing. Have a nice day!")
