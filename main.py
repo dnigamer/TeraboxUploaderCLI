@@ -94,6 +94,23 @@ fmt.success("auth", "Loaded authentication tokens.")
 # PROGRAM CONFIGURATION
 if not os.path.exists("settings.json"):
     fmt.error("settings", "settings.json file not found.")
+    fmt.error("settings", "Please create a settings.json file with the following format:")
+    fmt.error("settings", "{")
+    fmt.error("settings", '    "directories": {')
+    fmt.error("settings", '        "sourcedir": "path to the source directory",')
+    fmt.error("settings", '        "remotedir": "path to the remote directory",')
+    fmt.error("settings", '        "uploadeddir": "path to the uploaded directory"')
+    fmt.error("settings", '    },')
+    fmt.error("settings", '    "files": {')
+    fmt.error("settings", '        "movefiles": "true or false",')
+    fmt.error("settings", '        "deletesource": "true or false"')
+    fmt.error("settings", '    },')
+    fmt.error("settings", '    "encryption": {')
+    fmt.error("settings", '        "enabled": "true or false",')
+    fmt.error("settings", '        "encryptionkey": "path to the encryption key"')
+    fmt.error("settings", '    },')
+    fmt.error("settings", '    "ignoredfiles": ["file1", "file2", "file3", "file4"]')
+    fmt.error("settings", "}")
     exit()
 
 with open("settings.json", "r") as f:
@@ -101,10 +118,11 @@ with open("settings.json", "r") as f:
     sourceloc = settings["directories"]["sourcedir"]
     remoteloc = settings["directories"]["remotedir"]
     movetoloc = settings["directories"]["uploadeddir"]
-    movefiles = True if settings["settings"]["movefiles"] == "true" else False
-    delsrcfil = True if settings["settings"]["deletesource"] == "true" else False
-    encryptfl = True if settings["settings"]["encryption"] == "true" else False
-    encrypkey = settings["settings"]["encryptionkey"]
+    movefiles = True if settings["files"]["movefiles"].lower() == "true" else False
+    delsrcfil = True if settings["files"]["deletesource"].lower() == "true" else False
+    encryptfl = True if settings["encryption"]["enabled"].lower() == "true" else False
+    encrypkey = settings["encryption"]["encryptionkey"]
+    ignorefil = settings["ignoredfiles"]
     f.close()
 
 if delsrcfil and movefiles:
@@ -126,8 +144,9 @@ if not os.path.exists(movetoloc) and not os.path.isdir(movetoloc) and movefiles:
 
 if not encryptfl:
     fmt.warning("encryption", "File encryption is disabled. However, it is recommended to enable it for security "
-                              "reasons.")
-    fmt.warning("encryption", "For security of your files, please enable file encryption in the settings.json file.")
+                              "reasons regarding TeraBox's ToS and Privacy Policy.")
+    fmt.warning("encryption", "For full security of your files, please enable file encryption in the settings.json "
+                              "file.")
 
 encrypt = Encryption()
 
@@ -324,15 +343,23 @@ fmt.success("vip", f"You are a {'vip' if vip == 1 else 'non-vip'} user.")
 
 # Loop through files in source directory and add to array
 files = []
-fmt.info("upload", "Files to upload:")
+fmt.info("upload", f"Checking files in {sourceloc}...")
 for filename in os.listdir(sourceloc):
     if os.path.isfile(os.path.join(sourceloc, filename)):
+        file_extension = os.path.splitext(filename)[1]
         if filename in [".DS_Store", os.path.basename(__file__), "settings.json", "secrets.json"]:
             fmt.warning("upload", f"Skipping file {filename} because it's a protected file.")
             continue
+        if filename in ignorefil or file_extension in ignorefil:
+            fmt.warning("upload", f"Skipping file {filename} because it's in the ignore list.")
+            continue
         fsizebytes = os.path.getsize(os.path.join(sourceloc, filename))
-        fmt.info("upload", f" - {filename} ({convert_size(fsizebytes)})")
         files.append({"name": filename, "sizebytes": fsizebytes, "encrypted": False, "encrypterror": False})
+if len(files) == 0:
+    fmt.success("upload", "No files to upload.")
+    fmt.debug("program", "Program closing. Have a nice day!")
+    exit()
+fmt.info("upload", f"Uploading {len(files)} files in source directory.")
 
 
 # ENCRYPTION (IF ENABLED)
