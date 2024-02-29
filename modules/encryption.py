@@ -1,6 +1,7 @@
 import os.path
+from pathlib import Path
 
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet, InvalidToken
 
 
 class GenerateKeyException(Exception):
@@ -45,56 +46,61 @@ class Encryption:
     def generate_key(keyfile='keyfile.key') -> bool:
         """
         Generates a key and saves it to a file
-        :param keyfile:
+        :param keyfile: keyfile to save the Fernet key to
         :return:
         """
         try:
-            key = Fernet.generate_key()
-            with open(keyfile, 'wb') as filekey:
-                filekey.write(key)
+            Path(keyfile).write_bytes(Fernet.generate_key())
         except Exception as e:
-            raise GenerateKeyException(e)
+            raise GenerateKeyException(f"Something went wrong when generating key: {e}")
         return True
 
     @staticmethod
-    def encrypt_file(keypath: str, sourcefil: str, filename: str) -> bool:
+    def encrypt_file(keypath: str, filepath: str) -> bool:
         """
         Encrypts a file using the keyfile
         :param keypath:  path to the keyfile
-        :param sourcefil:  path to the file to encrypt
-        :param filename:  name of the file to encrypt
+        :param filepath:  name of the file to encrypt
         :return:
         """
+
+        # VERIFY IF KEYFILE AND FILE EXISTS
         if not os.path.exists(keypath):
             raise EncryptFileException(f"Keyfile {keypath} does not exist.")
 
-        if not os.path.exists(os.path.join(sourcefil, filename)):
-            raise EncryptFileException(f"File {os.path.join(sourcefil, filename)} does not exist.")
-
-        if "enc" in filename:
-            raise FileEncryptedException(f"File {filename} is already encrypted.")
+        if not os.path.exists(filepath):
+            raise FileNotFoundError(f"File {filepath} does not exist.")
 
         try:
-            with open(keypath, 'rb') as filekey:
-                key = filekey.read()
-            fernet = Fernet(key)
+            fernet = Fernet(Path(keypath).read_bytes())
         except Exception as e:
             raise EncryptFileException(f"Something went wrong when loading keyfile: {e}")
 
+        # VERIFY IF FILE IS ALREADY ENCRYPTED
+        if "enc" in filepath:
+            original = Path(filepath).read_bytes()
+            Path(os.path.join("./temp", f"{os.path.basename(filepath)}.enc")).write_bytes(original)
+            raise FileEncryptedException(f"File {filepath} is already encrypted. Reusing file.")
+
+        if Path(filepath).read_bytes().startswith(b"ENC-TERABOXUPLOADERCLI"):
+            original = Path(filepath).read_bytes()
+            Path(os.path.join("./temp", f"{os.path.basename(filepath)}.enc")).write_bytes(original)
+            raise FileEncryptedException(f"File {filepath} is already encrypted.")
+
+        # OPEN FILE, ENCRYPT AND SAVE
         try:
-            with open(os.path.join(sourcefil, filename), 'rb') as file:
-                original = file.read()
+            original = Path(filepath).read_bytes()
         except Exception as e:
             raise EncryptFileException(f"Something went wrong when reading file: {e}")
 
         try:
-            encrypted = fernet.encrypt(original)
+            header = b"ENC-TERABOXUPLOADERCLI"
+            encrypted = header + fernet.encrypt(original)
         except Exception as e:
             raise EncryptFileException(f"Something went wrong when encrypting file: {e}")
 
         try:
-            with open(os.path.join("./temp", f"{filename}.enc"), 'wb') as encrypted_file:
-                encrypted_file.write(encrypted)
+            Path(os.path.join("./temp", f"{os.path.basename(filepath)}.enc")).write_bytes(encrypted)
         except Exception as e:
             raise EncryptFileException(f"Something went wrong when writing encrypted file: {e}")
 
@@ -108,32 +114,35 @@ class Encryption:
         :param filename:  name of the file to decrypt
         :return:
         """
+        # VERIFY IF KEYFILE AND FILE EXISTS
         if not os.path.exists(keypath):
             raise DecryptFileException(f"Keyfile {keypath} does not exist.")
 
         if not os.path.exists(filename):
-            raise DecryptFileException(f"File {filename} does not exist.")
+            raise FileNotFoundError(f"File {filename} does not exist.")
 
+        # VERIFY IF FILE IS ENCRYPTED
         if "enc" not in filename:
             raise FileNotEncryptedException(f"File {filename} is not encrypted.")
 
+        if not Path(filename).read_bytes().startswith(b"ENC-TERABOXUPLOADERCLI"):
+            raise FileEncryptedException(f"File {filename} is not encrypted.")
+
+        # OPEN FILE, DECRYPT AND SAVE
         try:
-            with open(keypath, 'rb') as filekey:
-                key = filekey.read()
-            fernet = Fernet(key)
+            fernet = Fernet(Path(keypath).read_bytes())
         except Exception as e:
             raise DecryptFileException(f"Something went wrong when loading keyfile: {e}")
 
         try:
-            with open(filename, 'rb') as enc_file:
-                encrypted = enc_file.read()
-            decrypted = fernet.decrypt(encrypted)
+            decrypted = fernet.decrypt(Path(filename).read_bytes())[len(b"ENC-TERABOXUPLOADERCLI"):]
+        except InvalidToken:
+            raise FileNotEncryptedException(f"Key provided can't decrypt this file.")
         except Exception as e:
             raise DecryptFileException(f"Something went wrong when decrypting file: {e}")
 
         try:
-            with open(filename[:-3], 'wb') as dec_file:
-                dec_file.write(decrypted)
+            Path(filename[:-3]).write_bytes(decrypted)
         except Exception as e:
             raise DecryptFileException(f"Something went wrong when writing decrypted file: {e}")
 

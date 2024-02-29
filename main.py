@@ -5,13 +5,12 @@ import subprocess
 import hashlib
 import zipfile
 from urllib.parse import quote_plus
-from modules.encryption import Encryption
+from modules.encryption import Encryption, FileEncryptedException, GenerateKeyException
 from modules.formatting import Formatting
 
 import requests
 
 fmt = Formatting(timestamps=True)
-
 
 print("-" * 97)
 print("Terabox Uploader CLI v1.0.0 2024")
@@ -46,12 +45,12 @@ if os.name == "nt":
 else:
     fmt.info("CURL", "Checking for curl...")
     if not subprocess.run(["which", "curl"], stdout=subprocess.PIPE).stdout.decode('utf-8'):
-        fmt.info("CURL", "ii INFO: curl not found. Installing curl...")
+        fmt.info("CURL", "curl not found. Installing curl...")
         if os.name == "posix":
-            fmt.info("CURL", "ii INFO: Installing curl using Homebrew...")
+            fmt.info("CURL", "Installing curl using Homebrew...")
             subprocess.run(["brew", "install", "curl"])
         elif os.name == "linux":  # Assuming Debian-based distros
-            fmt.info("CURL", "ii INFO: Installing curl using apt...")
+            fmt.info("CURL", "Installing curl using apt...")
             subprocess.run(["sudo", "apt", "install", "-y", "curl"])
         else:
             fmt.error("CURL", "Your OS is not supported for automatic curl installation. Please install curl manually.")
@@ -215,7 +214,7 @@ def precreate_file(filename: str, md5json: str) -> str:
             return "fail"
     except Exception as e:
         fmt.error("precreate", "ERROR: File precreate request failed.")
-        fmt.error("precreate", "ERROR: More information about this error: {e}")
+        fmt.error("precreate", f"ERROR: More information about this error: {e}")
         return "fail"
 
 
@@ -332,14 +331,12 @@ def clean_temp() -> bool:
 # PROGRAM START
 clean_temp()  # Clean temp directory
 
-
 # Get member info and check if the user is a VIP
 fmt.info("vip", "Checking if you are a VIP user...")
 vip = json.loads(requests.get(f"{baseurltb}/rest/2.0/membership/proxy/user?method=query",
                               headers={"User-Agent": useragent},
                               cookies=cookies).text)["data"]["member_info"]["is_vip"]
 fmt.success("vip", f"You are a {'vip' if vip == 1 else 'non-vip'} user.")
-
 
 # Loop through files in source directory and add to array
 files = []
@@ -361,7 +358,6 @@ if len(files) == 0:
     exit()
 fmt.info("upload", f"Uploading {len(files)} files in source directory.")
 
-
 # ENCRYPTION (IF ENABLED)
 if encryptfl:
     if len(files) == 0:
@@ -371,11 +367,17 @@ if encryptfl:
     for file in files:
         fmt.info("encrypt", f"Encrypting file {file['name']}...")
         try:
-            encrypt.encrypt_file(encrypkey, sourceloc, file["name"])
+            encrypt.encrypt_file(encrypkey, os.path.join(sourceloc, file["name"]))
             file["name"] = f"{file['name']}.enc"
             file["sizebytes"] = os.path.getsize(os.path.join(temp_directory, file["name"]))
             file["encrypted"] = True
             fmt.success("encrypt", f"File {file['name']} encrypted successfully.")
+        except FileEncryptedException:
+            file["name"] = f"{file['name']}.enc"
+            file["sizebytes"] = os.path.getsize(os.path.join(temp_directory, file["name"]))
+            file["encrypted"] = True
+            fmt.warning("encrypt", f"File {file['name']} is already encrypted.")
+            continue
         except Exception as e:
             fmt.error("encrypt", f"File {file['name']} encryption failed.")
             fmt.error("encrypt", f"More information about this error: {e}")
@@ -383,11 +385,11 @@ if encryptfl:
             errors = True
             continue
 
-
 for file in files:
+    if file["encrypterror"]:
+        continue
+
     if file["encrypted"]:
-        if file["encrypterror"]:
-            continue
         sourceloc = temp_directory
         fmt.debug("file", f"File {file["name"]} is encrypted. Using source directory as {temp_directory}.")
     else:
