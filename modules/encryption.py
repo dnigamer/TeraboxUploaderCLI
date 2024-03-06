@@ -66,7 +66,7 @@ class Encryption:
 
         # VERIFY IF KEYFILE AND FILE EXISTS
         if not os.path.exists(keypath):
-            raise EncryptFileException(f"Keyfile {keypath} does not exist.")
+            raise FileNotFoundError(f"Keyfile {keypath} does not exist.")
 
         if not os.path.exists(filepath):
             raise FileNotFoundError(f"File {filepath} does not exist.")
@@ -94,7 +94,7 @@ class Encryption:
             raise EncryptFileException(f"Something went wrong when reading file: {e}")
 
         try:
-            header = b"ENC-TERABOXUPLOADERCLI"
+            header = b"ENC-TERABOXUPLOADERCLI-"
             encrypted = header + fernet.encrypt(original)
         except Exception as e:
             raise EncryptFileException(f"Something went wrong when encrypting file: {e}")
@@ -116,17 +116,14 @@ class Encryption:
         """
         # VERIFY IF KEYFILE AND FILE EXISTS
         if not os.path.exists(keypath):
-            raise DecryptFileException(f"Keyfile {keypath} does not exist.")
+            raise FileNotFoundError(f"Keyfile {keypath} does not exist.")
 
         if not os.path.exists(filename):
             raise FileNotFoundError(f"File {filename} does not exist.")
 
         # VERIFY IF FILE IS ENCRYPTED
-        if "enc" not in filename:
+        if "enc" not in filename or not Path(filename).read_bytes().startswith(b"ENC-TERABOXUPLOADERCLI-"):
             raise FileNotEncryptedException(f"File {filename} is not encrypted.")
-
-        if not Path(filename).read_bytes().startswith(b"ENC-TERABOXUPLOADERCLI"):
-            raise FileEncryptedException(f"File {filename} is not encrypted.")
 
         # OPEN FILE, DECRYPT AND SAVE
         try:
@@ -135,14 +132,14 @@ class Encryption:
             raise DecryptFileException(f"Something went wrong when loading keyfile: {e}")
 
         try:
-            decrypted = fernet.decrypt(Path(filename).read_bytes())[len(b"ENC-TERABOXUPLOADERCLI"):]
+            decrypted = fernet.decrypt(Path(filename).read_bytes()[len(b"ENC-TERABOXUPLOADERCLI-"):])
         except InvalidToken:
             raise FileNotEncryptedException(f"Key provided can't decrypt this file.")
         except Exception as e:
             raise DecryptFileException(f"Something went wrong when decrypting file: {e}")
 
         try:
-            Path(filename[:-3]).write_bytes(decrypted)
+            Path(filename[:-4]).write_bytes(decrypted)
         except Exception as e:
             raise DecryptFileException(f"Something went wrong when writing decrypted file: {e}")
 

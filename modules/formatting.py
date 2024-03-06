@@ -26,7 +26,7 @@ class Formatting:
         :return:
         """
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S') if self.timestamps else ''
-        return f"{self.style.BRIGHT}{self.fore.WHITE}[{timestamp}]{self.style.RESET_ALL}"
+        return f"{self.style.BRIGHT}[{timestamp}]{self.style.RESET_ALL}"
 
     def error(self, subject: str, message: str) -> None:
         """
