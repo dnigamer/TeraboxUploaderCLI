@@ -2,6 +2,7 @@ import os.path
 from pathlib import Path
 
 from cryptography.fernet import Fernet, InvalidToken
+import base64
 
 
 class GenerateKeyException(Exception):
@@ -95,7 +96,7 @@ class Encryption:
 
         try:
             header = b"ENC-TERABOXUPLOADERCLI-"
-            encrypted = header + fernet.encrypt(original)
+            encrypted = header + base64.urlsafe_b64decode(fernet.encrypt(original))
         except Exception as e:
             raise EncryptFileException(f"Something went wrong when encrypting file: {e}")
 
@@ -132,7 +133,7 @@ class Encryption:
             raise DecryptFileException(f"Something went wrong when loading keyfile: {e}")
 
         try:
-            decrypted = fernet.decrypt(Path(filename).read_bytes()[len(b"ENC-TERABOXUPLOADERCLI-"):])
+            decrypted = fernet.decrypt(base64.urlsafe_b64encode(Path(filename).read_bytes()[len(b"ENC-TERABOXUPLOADERCLI-"):]))
         except InvalidToken:
             raise FileNotEncryptedException(f"Key provided can't decrypt this file.")
         except Exception as e:
