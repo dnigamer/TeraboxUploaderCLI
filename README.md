@@ -57,7 +57,7 @@ Create a file named `secrets.json` in the same directory as the `main.py` file. 
     "browserid": "your_browser_id_here",
     "lang": "en",
     "ndus": "your_ndus_token_here",
-    "ndut_fmt": "your_ndut_fmt_token_here",
+    "ndut_fmt": "your_ndut_fmt_token_here"
   }
 }
 
@@ -74,11 +74,11 @@ Create a file named `settings.json` in the same directory as the `main.py` file.
   "directories": {
     "sourcedir": "source_directory_here",
     "remotedir": "remote_terabox_directory_here",
-    "uploadeddir": "uploaded_files_directory_here",
+    "uploadeddir": "uploaded_files_directory_here"
   },
   "files": {
     "movefiles": "false or true",
-    "deletesource": "false or true",
+    "deletesource": "false or true"
   },
   "encryption": {
     "enabled": "true or false",
