@@ -5,7 +5,7 @@ import subprocess
 import hashlib
 import zipfile
 from urllib.parse import quote_plus
-from modules.encryption import Encryption, FileEncryptedException, GenerateKeyException
+from modules.encryption import Encryption, FileEncryptedException
 from modules.formatting import Formatting
 
 import requests
