@@ -441,7 +441,7 @@ for file in files:
         for i in range(num_chunks):
             start = i * chunk_size
             end = min((i + 1) * chunk_size, len(content))
-            chunk_filename = f"{os.path.join(temp_directory, f"{file['name']}.part")}{i:03d}"
+            chunk_filename = os.path.join(temp_directory, f"{file['name']}.part{i:03d}")
             with open(chunk_filename, 'wb') as chunk_file:
                 chunk_file.write(content[start:end])
                 chunk_file.close()
@@ -478,7 +478,7 @@ for file in files:
                 errors = True
                 continue
             fmt.info("split upload", f"Piece {pieces.index(pi) + 1} of {len(pieces)} uploaded successfully.")
-        fmt.success("split upload", f"All pieces uploaded successfully.")
+        fmt.success("split upload", "All pieces uploaded successfully.")
     else:
         fmt.info("upload", f"Uploading file {file['name']}...")
         uploadhash = upload_file(pieces[0], uploadid, md5dict[0])
