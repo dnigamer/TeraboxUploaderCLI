@@ -7,23 +7,17 @@ Python CLI tool to make uploads to your Terabox cloud from any Linux or Windows 
 To use this tool you need to have a Terabox account and a JS Token key. You can get the session JS Token by logging into your Terabox account and following the sequence of steps below:
 
 1. Open your Terabox cloud.
-2. Open the browser's developer tools (F12).
+2. Open the browser's developer tools (F12).<br/>
 ![Developer tools F12](<images/devf12.png>)
-
-3. Go to the "Network" tab.
+3. Go to the "Network" tab.<br/>
 ![Developer tools F12 Network tab](<images/devf12network.png>)
-
-4. Select the "XHR" filter.
+4. Select the "XHR" filter.<br/>
 ![Developer tools F12 XHR filter](<images/devf12fetch.png>)
-
 5. Click any directory or file in the cloud.
-
-6. Look for any request made to the Terabox cloud URL and click on it.
+6. Look for any request made to the Terabox cloud URL and click on it.<br/>
 ![Developer tools F12 request item](<images/devf12list.png>)
-
-7. Select the "Payload" tab.
+7. Select the "Payload" tab.<br/>
 ![Developer tools F12 Payload tab](<images/devf12payload.png>)
-
 8. Look for the jsToken parameter in the list and copy its value.
 
 If you can't find the jsToken parameter, try selecting any other directory or file in the cloud and look for the jsToken parameter in the request payload. Make sure that you have the "XHR" filter selected and that you are looking at the "Payload" tab.
@@ -33,13 +27,13 @@ If you can't find the jsToken parameter, try selecting any other directory or fi
 Additionally to the JS Token, you will need to capture the cookies values. You can get them by following the sequence of steps below:
 
 1. Open your Terabox cloud.
-2. Open the browser's developer tools (F12).
+2. Open the browser's developer tools (F12).<br/>
 ![Developer tools F12](<images/devf12.png>)
-3. Go to the "Application" tab.
+3. Go to the "Application" tab.<br/>
 ![Developer tools F12 Application tab](<images/devf12apptab.png>)
-4. Select the "Cookies" item in the left panel.
+4. Select the "Cookies" item in the left panel.<br/>
 ![Developer tools F12 Cookies tab](<images/devf12cookiestab.png>)
-5. Look for the cookies values and copy them.
+5. Look for the cookies values and copy them.<br/>
 ![Developer tools F12 Cookies values](<images/devf12cookieval.png>)
 
 You will need to copy the csrfToken, browserid, lang, ndus, and ndut_fmt values. This step is required to make the tool be compatible with the Terabox API as much as possible. Even though there are some paramters that are not directly used by the Terabox API, they can still create problems if they are not present in the request headers.
