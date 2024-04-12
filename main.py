@@ -70,7 +70,7 @@ if not os.path.exists("secrets.json"):
     fmt.error("auth", '        "browserid": "your browserid",')
     fmt.error("auth", '        "lang": "your lang (NOT REQUIRED)",')
     fmt.error("auth", '        "ndus": "your ndus token",')
-    fmt.error("auth", '        "ndut_fmt": "your ndut_fmt token",')
+    fmt.error("auth", '        "ndut_fmt": "your ndut_fmt token"')
     fmt.error("auth", '    }')
     fmt.error("auth", "}")
     exit()
