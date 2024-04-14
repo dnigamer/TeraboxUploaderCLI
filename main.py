@@ -158,7 +158,7 @@ fmt.success("settings", "Loaded settings.")
 
 # PROGRAM INTERNAL VARS
 useragent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 14.2; rv:121.0) Gecko/20100101 Firefox/121.0"
-baseurltb = "https://www.terabox.com"
+baseurltb = "https://www.terabox1024.com"
 temp_directory = "./temp"
 errors = False
 
@@ -192,17 +192,9 @@ def precreate_file(filename: str, md5json: str) -> str:
                                              "Referer": baseurltb + "/main?category=all",
                                              "Content-Type": "application/x-www-form-urlencoded"},
                                     cookies=cookies,
-                                    data={
-                                        "app_id": "250528",
-                                        "web": "1",
-                                        "channel": "dubox",
-                                        "clienttype": "0",
-                                        "jsToken": f"{jstoken}",
-                                        "path": f"{remoteloc}/{filename}",
-                                        "autoinit": "1",
-                                        "target_path": f"{remoteloc}",
-                                        "block_list": f"{md5json}",
-                                    })
+                                    data={"app_id": "250528", "web": "1", "channel": "dubox", "clienttype": "0",
+                                          "jsToken": f"{jstoken}", "path": f"{remoteloc}/{filename}", "autoinit": "1",
+                                          "target_path": f"{remoteloc}", "block_list": f"{md5json}", })
         if "uploadid" in preresponse.text:
             return json.loads(preresponse.text)["uploadid"]
         else:
@@ -210,7 +202,7 @@ def precreate_file(filename: str, md5json: str) -> str:
             if json.loads(preresponse.text)["errmsg"] == 'need verify':
                 fmt.error("precreate", "The login session has expired. Please login again and refresh the credentials.")
                 return "fail"
-            fmt.error("precreate", "ERROR: More information: {json.loads(preresponse.text)}")
+            fmt.error("precreate", f"ERROR: More information: {json.loads(preresponse.text)}")
             return "fail"
     except Exception as e:
         fmt.error("precreate", "ERROR: File precreate request failed.")
@@ -229,31 +221,22 @@ def upload_file(filename: str, uploadid: str, md5hash: str, partseq: int = 0) ->
     fails, returns "failed".
     """
     try:
+        base_command = ["curl", "-X", "POST",
+                        "-H", f"User-Agent:{useragent}",
+                        "-H", f"Origin:{baseurltb}",
+                        "-H", f"Referer:{baseurltb}/main?category=all",
+                        "-H", "Content-Type:multipart/form-data",
+                        "-b", f"{cookies_str}",
+                        "-F", f"file=@{filename}",
+                        f"{baseurltb.replace('www', 'c-jp')}:443/rest/2.0/pcs/superfile2?"
+                        f"method=upload&type=tmpfile&app_id=250528&path={quote_plus(remoteloc + '/' + filename)}&"
+                        f"uploadid={uploadid}&partseq={partseq}"]
         if os.name == "nt":
-            out = subprocess.run(["curl/bin/curl.exe", "-X", "POST",
-                                  "-H", f"User-Agent:{useragent}",
-                                  "-H", f"Origin:{baseurltb}",
-                                  "-H", f"Referer:{baseurltb}/main?category=all",
-                                  "-H", "Content-Type:multipart/form-data",
-                                  "-b", f"{cookies_str}",
-                                  "-F", f"file=@{filename}",
-                                  f"{baseurltb.replace('www', 'c-jp')}:443/rest/2.0/pcs/superfile2?"
-                                  f"method=upload&type=tmpfile&app_id=250528&path={quote_plus(remoteloc + '/' + filename)}&"
-                                  f"uploadid={uploadid}&partseq={partseq}"],
-                                 stdout=subprocess.PIPE)
-        else:
-            out = subprocess.run(["curl", "-X", "POST",
-                                  "-H", f"User-Agent:{useragent}",
-                                  "-H", f"Origin:{baseurltb}",
-                                  "-H", f"Referer:{baseurltb}/main?category=all",
-                                  "-H", "Content-Type:multipart/form-data",
-                                  "-b", f"{cookies_str}",
-                                  "-F", f"file=@{filename}",
-                                  f"{baseurltb.replace('www', 'c-jp')}:443/rest/2.0/pcs/superfile2?"
-                                  f"method=upload&type=tmpfile&app_id=250528&path={quote_plus(remoteloc + '/' + filename)}&"
-                                  f"uploadid={uploadid}&partseq={partseq}"],
-                                 stdout=subprocess.PIPE)
+            base_command[0] = "curl/bin/curl.exe"
+
+        out = subprocess.run(base_command, stdout=subprocess.PIPE)
         uresp = json.loads(out.stdout.decode('utf-8'))
+
         if 'error_code' not in uresp:
             fmt.success("upload", f"File {filename} uploaded successfully.")
             if uresp["md5"] == md5hash:
@@ -286,20 +269,10 @@ def create_file(cloudpath: str, uploadid: str, sizebytes: int, md5json: str) -> 
         headers={"User-Agent": useragent, "Origin": baseurltb, "Content-Type": "application/x-www"
                                                                                "-form-urlencoded"},
         cookies=cookies,
-        params={
-            "isdir": "0",
-            "rtype": "1",
-            "bdstoken": f"{bdstoken}",
-            "app_id": "250528",
-            "jsToken": f"{jstoken}"
-        },
-        data={
-            "path": f"{cloudpath}",
-            "uploadid": f"{uploadid}",
-            "target_path": f"{remoteloc}/",
-            "size": f"{sizebytes}",
-            "block_list": f"{md5json}",
-        },
+        params={"isdir": "0", "rtype": "1", "bdstoken": f"{bdstoken}", "app_id": "250528", "jsToken": f"{jstoken}"},
+        data={"path": f"{cloudpath}", "uploadid": f"{uploadid}", "target_path": f"{remoteloc}/", "size": f"{sizebytes}",
+              "block_list": f"{md5json}",
+              },
     )
     return crresponse
 
@@ -334,8 +307,7 @@ clean_temp()  # Clean temp directory
 # Get member info and check if the user is a VIP
 fmt.info("vip", "Checking if you are a VIP user...")
 vip = json.loads(requests.get(f"{baseurltb}/rest/2.0/membership/proxy/user?method=query",
-                              headers={"User-Agent": useragent},
-                              cookies=cookies).text)["data"]["member_info"]["is_vip"]
+                              headers={"User-Agent": useragent}, cookies=cookies).text)["data"]["member_info"]["is_vip"]
 fmt.success("vip", f"You are a {'vip' if vip == 1 else 'non-vip'} user.")
 
 # Loop through files in source directory and add to array
@@ -527,6 +499,5 @@ if not errors:
     clean_temp()
     fmt.debug("program", "Program closing. Have a nice day!")
 else:
-    fmt.warning("upload", "Some files were not uploaded or had problems while uploading.")
-    fmt.warning("upload", "Please check the logs.")
+    fmt.warning("upload", "Some files were not uploaded or had problems while uploading. Please check the logs!")
     fmt.debug("program", "Program closing. Have a nice day!")
