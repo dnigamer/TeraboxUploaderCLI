@@ -1,3 +1,4 @@
+import fnmatch
 import math
 import os
 import json
@@ -343,13 +344,13 @@ files = []
 fmt.info("upload", f"Checking files in {sourceloc}...")
 for filename in os.listdir(sourceloc):
     if os.path.isfile(os.path.join(sourceloc, filename)):
-        file_extension = os.path.splitext(filename)[1]
         if filename in [".DS_Store", os.path.basename(__file__), "settings.json", "secrets.json"]:
             fmt.warning("upload", f"Skipping file {filename} because it's a protected file.")
             continue
-        if filename in ignorefil or file_extension in ignorefil:
-            fmt.warning("upload", f"Skipping file {filename} because it's in the ignore list.")
-            continue
+        for exclusion in ignorefil:
+            if fnmatch.fnmatch(filename, exclusion):
+                fmt.warning("upload", f"Skipping file {filename} because it's in the ignore list.")
+                continue
         fsizebytes = os.path.getsize(os.path.join(sourceloc, filename))
         files.append({"name": filename, "sizebytes": fsizebytes, "encrypted": False, "encrypterror": False})
 if len(files) == 0:

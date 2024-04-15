@@ -94,7 +94,7 @@ Create a file named `settings.json` in the same directory as the `main.py` file.
 - If you don't want to use encryption, set the `enabled` value to `false`. 
 - If you want to move the files to the `uploadeddir` after they are uploaded to Terabox, set the `movefiles` value to `true`. 
 - If you want to delete the source files after they are uploaded to Terabox, set the `deletesource` value to `true`. 
-- You can also add a list of files to be ignored in the upload process by adding their names to the `ignoredfiles` list.
+- You can also add a list of filenames and/or file globbing patterns to be ignored in the upload process by adding their names to the `ignoredfiles` list.
 
 
 ## Dependencies
