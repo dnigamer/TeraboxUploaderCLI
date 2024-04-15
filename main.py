@@ -438,7 +438,8 @@ for file in files:
         errors = True
         continue
     elif uploadid == "session_expired":
-        sys.exit()
+        errors = True
+        break
     fmt.success("precreate", f"Precreate for upload ID \"{uploadid}\" successful.")
     cloudpath = remoteloc + "/" + file['name']
 
