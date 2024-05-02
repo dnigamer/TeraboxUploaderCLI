@@ -65,7 +65,6 @@ if not os.path.exists("secrets.json"):
     fmt.error("auth", "Please create a secrets.json file with the following format:")
     fmt.error("auth", "{")
     fmt.error("auth", '    "jstoken": "your jstoken token",')
-    fmt.error("auth", '    "bdstoken": "your bdstoken token",')
     fmt.error("auth", '    "cookies": {')
     fmt.error("auth", '        "csrfToken": "your csrfToken token",')
     fmt.error("auth", '        "browserid": "your browserid",')
@@ -79,15 +78,14 @@ if not os.path.exists("secrets.json"):
 with open("secrets.json", "r") as f:
     secrets = json.load(f)
     jstoken = secrets["jstoken"]
-    bdstoken = secrets["bdstoken"]
     cookies = secrets["cookies"]
     cookies_str = ""
     for key, value in cookies.items():
         cookies_str += f"{key}={value};"
     f.close()
 
-if not (any(char.isdigit() for char in jstoken) and any(char.isdigit() for char in bdstoken)):
-    fmt.error("auth", "Invalid jstoken or bdstoken.")
+if not (any(char.isdigit() for char in jstoken)):
+    fmt.error("auth", "Invalid jstoken.")
     exit()
 fmt.success("auth", "Loaded authentication tokens.")
 
@@ -202,7 +200,7 @@ def precreate_file(filename: str, md5json: str) -> str:
             fmt.error("precreate", "File precreate failed.")
             if json.loads(preresponse.text)["errmsg"] == 'need verify':
                 fmt.error("precreate", "The login session has expired. Please login again and refresh the credentials.")
-                return "session"
+                return "fail"
             fmt.error("precreate", f"ERROR: More information: {json.loads(preresponse.text)}")
             return "fail"
     except Exception as e:
@@ -270,7 +268,7 @@ def create_file(cloudpath: str, uploadid: str, sizebytes: int, md5json: str) -> 
         headers={"User-Agent": useragent, "Origin": baseurltb, "Content-Type": "application/x-www"
                                                                                "-form-urlencoded"},
         cookies=cookies,
-        params={"isdir": "0", "rtype": "1", "bdstoken": f"{bdstoken}", "app_id": "250528", "jsToken": f"{jstoken}"},
+        params={"isdir": "0", "rtype": "1", "app_id": "250528", "jsToken": f"{jstoken}"},
         data={"path": f"{cloudpath}", "uploadid": f"{uploadid}", "target_path": f"{remoteloc}/", "size": f"{sizebytes}",
               "block_list": f"{md5json}",
               },
@@ -437,9 +435,6 @@ for file in files:
     if uploadid == "fail":
         errors = True
         continue
-    elif uploadid == "session":
-        errors = True
-        break
     fmt.success("precreate", f"Precreate for upload ID \"{uploadid}\" successful.")
     cloudpath = remoteloc + "/" + file['name']
 
