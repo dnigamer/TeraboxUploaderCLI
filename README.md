@@ -45,7 +45,6 @@ Create a file named `secrets.json` in the same directory as the `main.py` file. 
 ```json
 {
   "jstoken": "your_js_token_here",
-  "bdstoken": "your_bd_token_here",
   "cookies": {
     "csrfToken": "your_csrf_token_here",
     "browserid": "your_browser_id_here",
@@ -57,7 +56,7 @@ Create a file named `secrets.json` in the same directory as the `main.py` file. 
 
 ```
 
-Replace the `your_js_token_here`, `your_bd_token_here`, `your_csrf_token_here`, `your_browser_id_here`, `your_ndus_token_here`, and `your_ndut_fmt_token_here` values with the ones you captured in the previous steps.
+Replace the `your_js_token_here`, `your_csrf_token_here`, `your_browser_id_here`, `your_ndus_token_here`, and `your_ndut_fmt_token_here` values with the ones you captured in the previous steps.
 
 
 ### Building the settings.json file
