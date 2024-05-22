@@ -1,20 +1,21 @@
 import fnmatch
 import math
 import os
+import sys
 import json
 import subprocess
 import hashlib
 import zipfile
 from urllib.parse import quote_plus
+import requests
+
 from modules.encryption import Encryption, FileEncryptedException
 from modules.formatting import Formatting
-
-import requests
 
 fmt = Formatting(timestamps=True)
 
 print("-" * 97)
-print("Terabox Uploader CLI v1.0.0 2024")
+print("Terabox Uploader CLI v1.5.0 2024")
 print("* Developed by Gonçalo M. (@dnigamer in Github).")
 print("* For more information, please visit https://github.com/dnigamer/TeraboxUploaderCLI.")
 print("* If you find any bugs, please open an issue in the Github repository mentioned in the link above")
@@ -30,7 +31,7 @@ if os.name == "nt":
     fmt.info("CURL", "Windows host detected. Checking if curl is installed...")
     if not os.path.exists("curl/bin/curl.exe") or not os.path.exists("curl.exe"):
         fmt.info("CURL", f"curl.exe not found. Downloading curl from {CURL_URL}...")
-        curlreq = requests.get(CURL_URL)
+        curlreq = requests.get(CURL_URL, timeout=10)
         with open("curl.zip", "wb") as f:
             f.write(curlreq.content)
             f.close()
@@ -55,7 +56,7 @@ else:
             subprocess.run(["sudo", "apt", "install", "-y", "curl"])
         else:
             fmt.error("CURL", "Your OS is not supported for automatic curl installation. Please install curl manually.")
-            exit()
+            sys.exit()
     else:
         fmt.info("CURL", "Curl is already installed or exists in the current folder.")
 
@@ -73,7 +74,7 @@ if not os.path.exists("secrets.json"):
     fmt.error("auth", '        "ndut_fmt": "your ndut_fmt token"')
     fmt.error("auth", '    }')
     fmt.error("auth", "}")
-    exit()
+    sys.exit()
 
 with open("secrets.json", "r") as f:
     secrets = json.load(f)
@@ -86,7 +87,7 @@ with open("secrets.json", "r") as f:
 
 if not (any(char.isdigit() for char in jstoken)):
     fmt.error("auth", "Invalid jstoken.")
-    exit()
+    sys.exit()
 fmt.success("auth", "Loaded authentication tokens.")
 
 # PROGRAM CONFIGURATION
@@ -109,7 +110,7 @@ if not os.path.exists("settings.json"):
     fmt.error("settings", '    },')
     fmt.error("settings", '    "ignoredfiles": ["file1", "file2", "file3", "file4"]')
     fmt.error("settings", "}")
-    exit()
+    sys.exit()
 
 with open("settings.json", "r") as f:
     settings = json.load(f)
@@ -126,19 +127,19 @@ with open("settings.json", "r") as f:
 if delsrcfil and movefiles:
     fmt.error("settings", "You cannot have move and delete files settings configured as true at the same time.")
     fmt.error("settings", "Please check your settings.json file for these configurations.")
-    exit()
+    sys.exit()
 
 if not sourceloc or not remoteloc or not movetoloc:
     fmt.error("settings", "Invalid directory paths.")
-    exit()
+    sys.exit()
 
 if not os.path.exists(sourceloc) and not os.path.isdir(sourceloc):
     fmt.error("settings", "Source directory does not exist. Please check the path.")
-    exit()
+    sys.exit()
 
 if not os.path.exists(movetoloc) and not os.path.isdir(movetoloc) and movefiles:
     fmt.error("settings", "Move to directory does not exist. Please check the path.")
-    exit()
+    sys.exit()
 
 if not encryptfl:
     fmt.warning("encryption", "File encryption is disabled. However, it is recommended to enable it for security "
@@ -159,7 +160,7 @@ fmt.success("settings", "Loaded settings.")
 useragent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 14.2; rv:121.0) Gecko/20100101 Firefox/121.0"
 baseurltb = "https://www.terabox1024.com"
 temp_directory = "./temp"
-errors = False
+ERRORS = False
 
 
 # PROGRAM FUNCTIONS
@@ -326,7 +327,7 @@ for filename in os.listdir(sourceloc):
 if len(files) == 0:
     fmt.success("upload", "No files to upload.")
     fmt.debug("program", "Program closing. Have a nice day!")
-    exit()
+    sys.exit()
 fmt.info("upload", f"Uploading {len(files)} files in source directory.")
 
 # ENCRYPTION (IF ENABLED)
@@ -337,6 +338,14 @@ if encryptfl:
     fmt.info("encrypt", f"Encrypting files in {sourceloc}...")
     for file in files:
         fmt.info("encrypt", f"Encrypting file {file['name']}...")
+        try:
+            key_type = encrypt.get_key_type(encrypkey)
+            fmt.debug("encrypt", f"Formatting files using key type: {key_type}")
+        except Exception as e:
+            fmt.error("encrypt", f"Encryption key {encrypkey} is invalid.")
+            fmt.error("encrypt", f"More information about this error: {e}")
+            ERRORS = True
+            continue
         try:
             encrypt.encrypt_file(encrypkey, os.path.join(sourceloc, file['name']))
             file['name'] = f"{file['name']}.enc"
@@ -353,7 +362,7 @@ if encryptfl:
             fmt.error("encrypt", f"File {file['name']} encryption failed.")
             fmt.error("encrypt", f"More information about this error: {e}")
             file['encrypterror'] = True
-            errors = True
+            ERRORS = True
             continue
 
 for file in files:
@@ -387,38 +396,32 @@ for file in files:
     # UPLOAD PROCEDURE
     if not os.path.exists(f"{sourceloc}/{file['name']}"):
         fmt.error("upload", f"File {file['name']} does not exist on the source directory anymore. Skipping file...")
-        errors = True
+        ERRORS = True
         continue
 
     if (vip == 1 and file['sizebytes'] >= 21474836479) or (vip == 0 and file['sizebytes'] >= 4294967296):
         fmt.error("upload", f"File {file['name']} is too big for the type of account you have. Skipping file...")
         fmt.error("upload", f"File size: {convert_size(file['sizebytes'])}")
         fmt.error("upload", f"Maximum file size for your account: {'20GB' if vip == 1 else '4GB'}")
-        errors = True
+        ERRORS = True
         continue
 
     pieces = []
     if file['sizebytes'] >= 2147483648:
         fmt.info("split", "File size is greater than 2GB. Splitting original file in chunks...")
-        with open(os.path.join(sourceloc, file['name']), 'rb') as f:
-            content = f.read()
-            f.close()
 
         md5dict = []
         chunk_size = 120 * 1024 * 1024  # 120MB
-        num_chunks = int(len(content) / chunk_size)
+        num_chunks = int(os.path.getsize(os.path.join(sourceloc, file['name'])) / chunk_size)
         fmt.debug("split", f"File will be split in {num_chunks} chunks.")
 
         for i in range(num_chunks):
-            start = i * chunk_size
-            end = min((i + 1) * chunk_size, len(content))
             chunk_filename = os.path.join(temp_directory, f"{file['name']}.part{i:03d}")
-            with open(chunk_filename, 'wb') as chunk_file:
-                chunk_file.write(content[start:end])
-                chunk_file.close()
-            with open(chunk_filename, 'rb') as chunk_file:
-                md5dict.append(hashlib.md5(chunk_file.read()).hexdigest())
-                chunk_file.close()
+            with open(os.path.join(sourceloc, file['name']), 'rb') as f, open(chunk_filename, 'wb') as chunk_file:
+                f.seek(i * chunk_size)
+                chunk = f.read(chunk_size)
+                chunk_file.write(chunk)
+                md5dict.append(hashlib.md5(chunk).hexdigest())
             pieces.append(chunk_filename)
 
         fmt.success("split", f"File split successfully in {len(pieces)} pieces.")
@@ -433,7 +436,7 @@ for file in files:
     fmt.info("precreate", "Precreating file...")
     uploadid = precreate_file(file['name'], md5json)
     if uploadid == "fail":
-        errors = True
+        ERRORS = True
         continue
     fmt.success("precreate", f"Precreate for upload ID \"{uploadid}\" successful.")
     cloudpath = remoteloc + "/" + file['name']
@@ -446,7 +449,7 @@ for file in files:
             fmt.debug("split upload", f"Uploading piece {pieces.index(pi) + 1} of {len(pieces)}...")
             upresponse = upload_file(pi, uploadid, md5dict[i], i)
             if upresponse in ("failed", "mismatch"):
-                errors = True
+                ERRORS = True
                 continue
             fmt.info("split upload", f"Piece {pieces.index(pi) + 1} of {len(pieces)} uploaded successfully.")
         fmt.success("split upload", "All pieces uploaded successfully.")
@@ -454,7 +457,7 @@ for file in files:
         fmt.info("upload", f"Uploading file {file['name']}...")
         uploadhash = upload_file(pieces[0], uploadid, md5dict[0])
         if uploadhash in ("failed", "mismatch"):
-            errors = True
+            ERRORS = True
             continue
 
     # Create the file on the cloud
@@ -466,7 +469,7 @@ for file in files:
     else:
         fmt.error("upload", f"File {file['name']} upload failed.")
         fmt.error("upload", f"More information: {create}")
-        errors = True
+        ERRORS = True
         continue
 
     if movefiles:
@@ -477,7 +480,7 @@ for file in files:
         except Exception as e:
             fmt.error("move", f"File {file['name']} could not be moved.")
             fmt.error("move", f"More information about this error: {e}")
-            errors = True
+            ERRORS = True
             continue
 
     if delsrcfil:
@@ -488,12 +491,12 @@ for file in files:
         except Exception as e:
             fmt.error("delete", f"File {file['name']} could not be deleted.")
             fmt.error("delete", f"More information about this error: {e}")
-            errors = True
+            ERRORS = True
             continue
 
     fmt.success("upload", f"File {file['name']} concluded every upload procedure.")
 
-if not errors:
+if not ERRORS:
     fmt.success("upload", "All files were uploaded.")
     clean_temp()
     fmt.debug("program", "Program closing. Have a nice day!")
