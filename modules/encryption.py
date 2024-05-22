@@ -12,7 +12,7 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives import padding
 from cryptography.hazmat.backends import default_backend
 
-from formatting import Formatting
+from modules.formatting import Formatting
 
 
 class GenerateKeyException(Exception):

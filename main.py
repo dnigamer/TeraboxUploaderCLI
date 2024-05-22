@@ -122,6 +122,7 @@ with open("settings.json", "r") as f:
     encryptfl = True if settings["encryption"]["enabled"].lower() == "true" else False
     encrypkey = settings["encryption"]["encryptionkey"]
     ignorefil = settings["ignoredfiles"]
+    showquota = True if settings["appearance"]["showquota"].lower() == "true" else False
     f.close()
 
 if delsrcfil and movefiles:
@@ -310,191 +311,214 @@ vip = json.loads(requests.get(f"{baseurltb}/rest/2.0/membership/proxy/user?metho
                               headers={"User-Agent": useragent}, cookies=cookies).text)["data"]["member_info"]["is_vip"]
 fmt.success("vip", f"You are a {'vip' if vip == 1 else 'non-vip'} user.")
 
+
+def get_files_in_directory(dir, base_directory):
+    dir_files = {}
+    for filename in os.listdir(dir):
+        full_path = os.path.join(dir, filename)
+        if os.path.isfile(full_path):
+            if filename in [".DS_Store", os.path.basename(__file__), "settings.json", "secrets.json"]:
+                fmt.warning("upload", f"Skipping file {filename} because it's a protected file.")
+                continue
+            for exclusion in ignorefil:
+                if fnmatch.fnmatch(filename, exclusion):
+                    fmt.warning("upload", f"Skipping file {filename} because it's in the ignore list.")
+                    continue
+            sizebytes = os.path.getsize(full_path)
+            relpath = os.path.relpath(full_path, base_directory)
+            dir_files.setdefault(dir, []).append({"name": filename, "relative_path": relpath, "sizebytes":
+                sizebytes, "encrypted": False, "encrypterror": False})
+        elif os.path.isdir(full_path):
+            dir_files.update(get_files_in_directory(full_path, base_directory))
+    return dir_files
+
+
 # Loop through files in source directory and add to array
 files = []
 fmt.info("upload", f"Checking files in {sourceloc}...")
-for filename in os.listdir(sourceloc):
-    if os.path.isfile(os.path.join(sourceloc, filename)):
-        if filename in [".DS_Store", os.path.basename(__file__), "settings.json", "secrets.json"]:
-            fmt.warning("upload", f"Skipping file {filename} because it's a protected file.")
-            continue
-        for exclusion in ignorefil:
-            if fnmatch.fnmatch(filename, exclusion):
-                fmt.warning("upload", f"Skipping file {filename} because it's in the ignore list.")
-                continue
-        fsizebytes = os.path.getsize(os.path.join(sourceloc, filename))
-        files.append({"name": filename, "sizebytes": fsizebytes, "encrypted": False, "encrypterror": False})
+files = get_files_in_directory(sourceloc, sourceloc)
 if len(files) == 0:
     fmt.success("upload", "No files to upload.")
     fmt.debug("program", "Program closing. Have a nice day!")
     sys.exit()
-fmt.info("upload", f"Uploading {len(files)} files in source directory.")
 
 # ENCRYPTION (IF ENABLED)
 if encryptfl:
     if len(files) == 0:
         fmt.success("encrypt", "No files to encrypt.")
         pass
+
+    try:
+        key_type = encrypt.get_key_type(encrypkey)
+        fmt.debug("encrypt", f"Formatting files using key type: {key_type}")
+    except Exception as e:
+        fmt.error("encrypt", f"Encryption key {encrypkey} is invalid.")
+        fmt.error("encrypt", f"More information about this error: {e}")
+        ERRORS = True
+        sys.exit()
+
     fmt.info("encrypt", f"Encrypting files in {sourceloc}...")
-    for file in files:
-        fmt.info("encrypt", f"Encrypting file {file['name']}...")
-        try:
-            key_type = encrypt.get_key_type(encrypkey)
-            fmt.debug("encrypt", f"Formatting files using key type: {key_type}")
-        except Exception as e:
-            fmt.error("encrypt", f"Encryption key {encrypkey} is invalid.")
-            fmt.error("encrypt", f"More information about this error: {e}")
-            ERRORS = True
-            continue
-        try:
-            encrypt.encrypt_file(encrypkey, os.path.join(sourceloc, file['name']))
-            file['name'] = f"{file['name']}.enc"
-            file['sizebytes'] = os.path.getsize(os.path.join(temp_directory, file['name']))
-            file['encrypted'] = True
-            fmt.success("encrypt", f"File {file['name']} encrypted successfully.")
-        except FileEncryptedException:
-            file['name'] = f"{file['name']}.enc"
-            file['sizebytes'] = os.path.getsize(os.path.join(temp_directory, file['name']))
-            file['encrypted'] = True
-            fmt.warning("encrypt", f"File {file['name']} is already encrypted.")
-            continue
-        except Exception as e:
-            fmt.error("encrypt", f"File {file['name']} encryption failed.")
-            fmt.error("encrypt", f"More information about this error: {e}")
-            file['encrypterror'] = True
-            ERRORS = True
-            continue
-
-for file in files:
-    if file['encrypterror']:
-        continue
-
-    if file['encrypted']:
-        sourceloc = temp_directory
-        fmt.debug("file", f"File {file['name']} is encrypted. Using source directory as {temp_directory}.")
-    else:
-        sourceloc = settings["directories"]["sourcedir"]
-        fmt.debug("file", f"File {file['name']} is not encrypted. Using source directory as {sourceloc}.")
-
-    fmt.info("upload", f"Uploading {file['name']}...")
-
-    # QUOTA CALCULATIONS
-    quotareq = requests.get(
-        f"{baseurltb}/api/quota?checkfree=1",
-        headers={"User-Agent": useragent},
-        cookies=cookies,
-    )
-    quota = json.loads(quotareq.text)
-    aviquot = quota['total'] - quota['used']  # available quota
-
-    fmt.debug("quota", f"Available quota: {convert_size(aviquot)}")
-    if aviquot < file['sizebytes']:
-        fmt.error("quota", f"Not enough quota available for file {file['name']}.")
-        continue
-    fmt.debug("quota", f"Available quota after the upload: {convert_size(aviquot - file['sizebytes'])}")
-
-    # UPLOAD PROCEDURE
-    if not os.path.exists(f"{sourceloc}/{file['name']}"):
-        fmt.error("upload", f"File {file['name']} does not exist on the source directory anymore. Skipping file...")
-        ERRORS = True
-        continue
-
-    if (vip == 1 and file['sizebytes'] >= 21474836479) or (vip == 0 and file['sizebytes'] >= 4294967296):
-        fmt.error("upload", f"File {file['name']} is too big for the type of account you have. Skipping file...")
-        fmt.error("upload", f"File size: {convert_size(file['sizebytes'])}")
-        fmt.error("upload", f"Maximum file size for your account: {'20GB' if vip == 1 else '4GB'}")
-        ERRORS = True
-        continue
-
-    pieces = []
-    if file['sizebytes'] >= 2147483648:
-        fmt.info("split", "File size is greater than 2GB. Splitting original file in chunks...")
-
-        md5dict = []
-        chunk_size = 120 * 1024 * 1024  # 120MB
-        num_chunks = int(os.path.getsize(os.path.join(sourceloc, file['name'])) / chunk_size)
-        fmt.debug("split", f"File will be split in {num_chunks} chunks.")
-
-        for i in range(num_chunks):
-            chunk_filename = os.path.join(temp_directory, f"{file['name']}.part{i:03d}")
-            with open(os.path.join(sourceloc, file['name']), 'rb') as f, open(chunk_filename, 'wb') as chunk_file:
-                f.seek(i * chunk_size)
-                chunk = f.read(chunk_size)
-                chunk_file.write(chunk)
-                md5dict.append(hashlib.md5(chunk).hexdigest())
-            pieces.append(chunk_filename)
-
-        fmt.success("split", f"File split successfully in {len(pieces)} pieces.")
-        md5json = json.dumps(md5dict)
-    else:
-        md5dict = [hashlib.md5(open(f"{sourceloc}/{file['name']}", 'rb').read()).hexdigest()]
-        fmt.info("md5", f"MD5 hash calculated for file {file['name']}.")
-        md5json = json.dumps(md5dict)
-        pieces.append(f"{sourceloc}/{file['name']}")
-
-    # Preinitialize the full file on the cloud
-    fmt.info("precreate", "Precreating file...")
-    uploadid = precreate_file(file['name'], md5json)
-    if uploadid == "fail":
-        ERRORS = True
-        continue
-    fmt.success("precreate", f"Precreate for upload ID \"{uploadid}\" successful.")
-    cloudpath = remoteloc + "/" + file['name']
-
-    if len(pieces) > 1:
-        fmt.info("split upload", f"Commencing upload of file {file['name']} in pieces...")
-
-        # Upload the pieces
-        for i, pi in enumerate(pieces):
-            fmt.debug("split upload", f"Uploading piece {pieces.index(pi) + 1} of {len(pieces)}...")
-            upresponse = upload_file(pi, uploadid, md5dict[i], i)
-            if upresponse in ("failed", "mismatch"):
+    for directory, files_in_directory in files.items():
+        for file in files_in_directory:
+            fmt.info("encrypt", f"Encrypting file {file['name']}...")
+            try:
+                encrypt.encrypt_file(encrypkey, os.path.join(str(directory),
+                                                             str(file['name'].replace(str(directory), ''))))
+                file['name'] = f"{file['name']}.enc"
+                file['sizebytes'] = os.path.getsize(os.path.join(temp_directory, file['name']))
+                file['encrypted'] = True
+                fmt.success("encrypt", f"File {file['name']} encrypted successfully.")
+            except FileEncryptedException:
+                file['name'] = f"{file['name']}.enc"
+                file['sizebytes'] = os.path.getsize(os.path.join(temp_directory, file['name']))
+                file['encrypted'] = True
+                fmt.warning("encrypt", f"File {file['name']} is already encrypted.")
+                continue
+            except Exception as e:
+                fmt.error("encrypt", f"File {file['name']} encryption failed.")
+                fmt.error("encrypt", f"More information about this error: {e}")
+                file['encrypterror'] = True
                 ERRORS = True
                 continue
-            fmt.info("split upload", f"Piece {pieces.index(pi) + 1} of {len(pieces)} uploaded successfully.")
-        fmt.success("split upload", "All pieces uploaded successfully.")
-    else:
-        fmt.info("upload", f"Uploading file {file['name']}...")
-        uploadhash = upload_file(pieces[0], uploadid, md5dict[0])
-        if uploadhash in ("failed", "mismatch"):
-            ERRORS = True
-            continue
 
-    # Create the file on the cloud
-    fmt.info("upload", f"Finalizing file {file['name']} upload...")
-    create = create_file(cloudpath, uploadid, file['sizebytes'], md5json)
-    if json.loads(create.text)["errno"] == 0:
-        fmt.success("upload", f"File {file['name']} uploaded and saved on cloud successfully.")
-        fmt.success("upload", f"The file is now available at {remoteloc + '/' + file['name']} in the cloud.")
-    else:
-        fmt.error("upload", f"File {file['name']} upload failed.")
-        fmt.error("upload", f"More information: {create}")
-        ERRORS = True
+
+for directory, files_in_directory in files.items():
+    if not files_in_directory:
         continue
 
-    if movefiles:
-        fmt.info("move", f"Moving file {sourceloc}/{file['name']} to {movetoloc}/{file['name']}...")
-        try:
-            os.rename(f"{sourceloc}/{file['name']}", f"{movetoloc}/{file['name']}")
-            fmt.success("move", f"File {file['name']} moved successfully to destination.")
-        except Exception as e:
-            fmt.error("move", f"File {file['name']} could not be moved.")
-            fmt.error("move", f"More information about this error: {e}")
+    for file in files_in_directory:
+        if file['encrypterror']:
+            continue
+
+        if file['encrypted']:
+            sourceloc = temp_directory
+            fmt.debug("file", f"File {file['name']} is encrypted. Using source directory as {temp_directory}.")
+        else:
+            sourceloc = settings["directories"]["sourcedir"]
+            fmt.debug("file", f"File {file['name']} is not encrypted. Using source directory as {sourceloc}.")
+
+        fmt.info("upload", f"Uploading {file['name']}...")
+
+        if showquota:
+            # QUOTA CALCULATIONS
+            quotareq = requests.get(
+                f"{baseurltb}/api/quota?checkfree=1",
+                headers={"User-Agent": useragent},
+                cookies=cookies,
+            )
+            quota = json.loads(quotareq.text)
+            aviquot = quota['total'] - quota['used']  # available quota
+
+            fmt.debug("quota", f"Available quota: {convert_size(aviquot)}")
+            if aviquot < file['sizebytes']:
+                fmt.error("quota", f"Not enough quota available for file {file['name']}.")
+                continue
+            fmt.debug("quota", f"Available quota after the upload: {convert_size(aviquot - file['sizebytes'])}")
+
+        # UPLOAD PROCEDURE
+        if not os.path.exists(f"{sourceloc}/{file['name']}"):
+            fmt.error("upload", f"File {file['name']} does not exist on the source directory anymore. Skipping file...")
             ERRORS = True
             continue
 
-    if delsrcfil:
-        fmt.info("delete", f"Deleting file {file['name']} from source directory...")
-        try:
-            os.remove(f"{sourceloc}/{file['name']}")
-            fmt.success("delete", f"File {file['name']} deleted successfully.")
-        except Exception as e:
-            fmt.error("delete", f"File {file['name']} could not be deleted.")
-            fmt.error("delete", f"More information about this error: {e}")
+        if (vip == 1 and file['sizebytes'] >= 21474836479) or (vip == 0 and file['sizebytes'] >= 4294967296):
+            fmt.error("upload", f"File {file['name']} is too big for the type of account you have. Skipping file...")
+            fmt.error("upload", f"File size: {convert_size(file['sizebytes'])}")
+            fmt.error("upload", f"Maximum file size for your account: {'20GB' if vip == 1 else '4GB'}")
             ERRORS = True
             continue
 
-    fmt.success("upload", f"File {file['name']} concluded every upload procedure.")
+        pieces = []
+        if file['sizebytes'] >= 2147483648:
+            fmt.info("split", "File size is greater than 2GB. Splitting original file in chunks...")
+
+            md5dict = []
+            chunk_size = 120 * 1024 * 1024  # 120MB
+            num_chunks = int(os.path.getsize(os.path.join(sourceloc, file['name'])) / chunk_size)
+            fmt.debug("split", f"File will be split in {num_chunks} chunks.")
+
+            for i in range(num_chunks):
+                chunk_filename = os.path.join(temp_directory, f"{file['name']}.part{i:03d}")
+                with open(os.path.join(sourceloc, file['name']), 'rb') as f, open(chunk_filename, 'wb') as chunk_file:
+                    f.seek(i * chunk_size)
+                    chunk = f.read(chunk_size)
+                    chunk_file.write(chunk)
+                    md5dict.append(hashlib.md5(chunk).hexdigest())
+                pieces.append(chunk_filename)
+
+            fmt.success("split", f"File split successfully in {len(pieces)} pieces.")
+            md5json = json.dumps(md5dict)
+        else:
+            md5dict = [hashlib.md5(open(f"{sourceloc}/{file['name']}", 'rb').read()).hexdigest()]
+            fmt.info("md5", f"MD5 hash calculated for file {file['name']}.")
+            md5json = json.dumps(md5dict)
+            pieces.append(f"{sourceloc}/{file['name']}")
+
+        # Preinitialize the full file on the cloud
+        fmt.info("precreate", "Precreating file...")
+        relative_path = os.path.join(remoteloc, file['relative_path'].replace(directory, ''))
+        if file['encrypted']:
+            relative_path += '.enc'
+        uploadid = precreate_file(os.path.join(str(remoteloc), str(file['relative_path'].replace(str(directory), ''))),
+                                  md5json)
+        if uploadid == "fail":
+            ERRORS = True
+            continue
+        cloudpath = relative_path
+
+        if len(pieces) > 1:
+            fmt.info("split upload", f"Commencing upload of file {file['name']} in pieces...")
+
+            # Upload the pieces
+            for i, pi in enumerate(pieces):
+                fmt.debug("split upload", f"Uploading piece {pieces.index(pi) + 1} of {len(pieces)}...")
+                upresponse = upload_file(pi, uploadid, md5dict[i], i)
+                if upresponse in ("failed", "mismatch"):
+                    ERRORS = True
+                    continue
+                fmt.info("split upload", f"Piece {pieces.index(pi) + 1} of {len(pieces)} uploaded successfully.")
+        else:
+            fmt.info("upload", f"Uploading file {file['name']}...")
+            uploadhash = upload_file(pieces[0], uploadid, md5dict[0])
+            if uploadhash in ("failed", "mismatch"):
+                ERRORS = True
+                continue
+
+        # Create the file on the cloud
+        fmt.info("upload", f"Finalizing file {file['name']} upload...")
+        create = create_file(cloudpath, uploadid, file['sizebytes'], md5json)
+        if json.loads(create.text)["errno"] == 0:
+            fmt.success("upload", f"File {file['name']} uploaded and saved on cloud successfully.")
+            fmt.success("upload", f"The file is now available at {cloudpath} in the cloud.")
+        else:
+            fmt.error("upload", f"File {file['name']} upload failed.")
+            fmt.error("upload", f"More information: {create}")
+            ERRORS = True
+            continue
+
+        if movefiles:
+            fmt.info("move", f"Moving file {sourceloc}/{file['name']} to {movetoloc}/{file['name']}...")
+            try:
+                os.rename(f"{sourceloc}/{file['name']}", f"{movetoloc}/{file['name']}")
+                fmt.success("move", f"File {file['name']} moved successfully to destination.")
+            except Exception as e:
+                fmt.error("move", f"File {file['name']} could not be moved.")
+                fmt.error("move", f"More information about this error: {e}")
+                ERRORS = True
+                continue
+
+        if delsrcfil:
+            fmt.info("delete", f"Deleting file {file['name']} from source directory...")
+            try:
+                os.remove(f"{sourceloc}/{file['name']}")
+                fmt.success("delete", f"File {file['name']} deleted successfully.")
+            except Exception as e:
+                fmt.error("delete", f"File {file['name']} could not be deleted.")
+                fmt.error("delete", f"More information about this error: {e}")
+                ERRORS = True
+                continue
+
+        fmt.success("upload", f"File {file['name']} concluded every upload procedure.")
 
 if not ERRORS:
     fmt.success("upload", "All files were uploaded.")
