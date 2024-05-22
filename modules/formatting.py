@@ -1,3 +1,18 @@
+"""
+TeraBox Uploader CLI: formatting.py
+This module is used to format the output of the program.
+It uses the colorama library to color the output.
+Used in: main.py
+
+This program is provided as-is, without any warranty.
+This program is not affiliated with Terabox in any way.
+This program is licensed under the MIT License.
+
+Developed by Gonçalo M. (@dnigamer in GitHub).
+For more information, please visit https://github.com/dnigamer/TeraboxUploaderCLI
+If you find any bugs, please open an issue in the GitHub repository mentioned in the link above.
+"""
+
 from datetime import datetime
 
 from colorama import Fore, Back, Style
@@ -5,7 +20,8 @@ from colorama import Fore, Back, Style
 
 class Formatting:
     """
-    This class is used to format the output of the program. It uses the colorama library to color the output.
+    This class is used to format the output of the program.
+    It uses the colorama library to color the output.
     """
     def __init__(self, timestamps=False):
         """
