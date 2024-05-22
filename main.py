@@ -15,7 +15,7 @@ from modules.formatting import Formatting
 fmt = Formatting(timestamps=True)
 
 print("-" * 97)
-print("Terabox Uploader CLI v1.5.0 2024")
+print("Terabox Uploader CLI v1.6.0 2024")
 print("* Developed by Gonçalo M. (@dnigamer in Github).")
 print("* For more information, please visit https://github.com/dnigamer/TeraboxUploaderCLI.")
 print("* If you find any bugs, please open an issue in the Github repository mentioned in the link above")
@@ -85,7 +85,7 @@ with open("secrets.json", "r") as f:
         cookies_str += f"{key}={value};"
     f.close()
 
-if not (any(char.isdigit() for char in jstoken)):
+if not any(char.isdigit() for char in jstoken):
     fmt.error("auth", "Invalid jstoken.")
     sys.exit()
 fmt.success("auth", "Loaded authentication tokens.")
@@ -178,6 +178,34 @@ def convert_size(size_bytes: int) -> str:
     p = math.pow(1024, it)
     size = round(size_bytes / p, 2)
     return f"{size} {size_name[it]}"
+
+
+def fetch_remote_directory(remote_dir: str) -> list:
+    """
+    Returns all the files in the remote directory in a list
+    :param remote_dir:
+    :return: list of files/folders in the remote directory
+    """
+    req = requests.get(f"{baseurltb}/api/list",
+                       headers={"User-Agent": useragent, "Origin": baseurltb,
+                                "Referer": baseurltb + "/main?category=all",
+                                "Content-Type": "application/x-www-form-urlencoded"},
+                       cookies=cookies,
+                       data={"app_id": "250528", "web": "1", "channel": "dubox", "clienttype": "0",
+                             "jsToken": f"{jstoken}", "dir": f"{remote_dir}", "num": "1000", "page": "1"})
+    response = json.loads(req.text)["list"]
+    items = []
+    for entry in response:
+        listing = {
+            "name": entry["server_filename"],
+            "path": entry["path"],
+            "size": entry["size"],
+        }
+        if entry["isdir"] == 0:  # If the entry is a file, add the MD5 hash
+            items.append(listing)
+        if entry["isdir"] == 1:  # If the entry is a directory, recursively fetch its content
+            items.extend(fetch_remote_directory(entry["path"]))
+    return items
 
 
 def precreate_file(filename: str, md5json: str) -> str:
@@ -334,13 +362,13 @@ def get_files_in_directory(dir, base_directory):
 
 
 # Loop through files in source directory and add to array
-files = []
 fmt.info("upload", f"Checking files in {sourceloc}...")
 files = get_files_in_directory(sourceloc, sourceloc)
 if len(files) == 0:
     fmt.success("upload", "No files to upload.")
     fmt.debug("program", "Program closing. Have a nice day!")
     sys.exit()
+
 
 # ENCRYPTION (IF ENABLED)
 if encryptfl:
@@ -381,13 +409,21 @@ if encryptfl:
                 ERRORS = True
                 continue
 
-
+remote_files = fetch_remote_directory(remoteloc)
 for directory, files_in_directory in files.items():
     if not files_in_directory:
         continue
 
     for file in files_in_directory:
         if file['encrypterror']:
+            continue
+
+        remote_found = False
+        for remote_file in remote_files:
+            if remote_file["name"] == file["name"]:
+                fmt.warning("upload", f"File {file['name']} already exists on the cloud. Skipping file...")
+                remote_found = True
+        if remote_found:
             continue
 
         if file['encrypted']:
@@ -486,7 +522,7 @@ for directory, files_in_directory in files.items():
 
         # Create the file on the cloud
         fmt.info("upload", f"Finalizing file {file['name']} upload...")
-        create = create_file(cloudpath, uploadid, file['sizebytes'], md5json)
+        create = create_file(str(cloudpath), uploadid, file['sizebytes'], md5json)
         if json.loads(create.text)["errno"] == 0:
             fmt.success("upload", f"File {file['name']} uploaded and saved on cloud successfully.")
             fmt.success("upload", f"The file is now available at {cloudpath} in the cloud.")
