@@ -40,6 +40,218 @@ print("! This program is provided as-is, without any warranty.")
 print("! This program is not affiliated with Terabox in any way.")
 print("-" * 97)
 
+if len(sys.argv) > 1 and sys.argv[1] == "setup":
+    if os.path.exists("secrets.json") and os.path.exists("settings.json"):
+        fmt.error("setup", "secrets.json and settings.json already exist in the current folder.")
+        sys.exit()
+
+    if os.path.exists("secrets.json"):
+        fmt.error("setup", "secrets.json already exists in the current folder.")
+    else:
+        fmt.info("setup", "Creating secrets.json file...")
+        fmt.info("setup", "Please enter the required information for the secrets.json file.")
+
+        print("Enter your jstoken:")
+        JS_TOKEN = input(": ")
+        if not any(char.isdigit() for char in JS_TOKEN):
+            fmt.error("setup", "Invalid jstoken.")
+            sys.exit()
+
+        print("Enter your csrfToken:")
+        CSRF_TOKEN = input(": ")
+        if not CSRF_TOKEN:
+            fmt.error("setup", "Invalid csrfToken.")
+            sys.exit()
+
+        print("Enter your browserid:")
+        BROWSER_ID = input(": ")
+        if not BROWSER_ID:
+            fmt.error("setup", "Invalid browserid.")
+            sys.exit()
+
+        print("Enter your lang:")
+        LANG = input(": ")
+        if not LANG:
+            LANG = "en"
+
+        print("Enter your ndus token:")
+        NDUS = input(": ")
+        if not NDUS:
+            fmt.error("setup", "Invalid ndus token.")
+            sys.exit()
+
+        print("Enter your ndut_fmt token:")
+        NDUT_FMT = input(": ")
+        if not NDUT_FMT:
+            fmt.error("setup", "Invalid ndut_fmt token.")
+            sys.exit()
+
+        try:
+            with open("secrets.json", "w", encoding="utf8") as f:
+                f.write("{\n")
+                f.write(f'    "jstoken": "{JS_TOKEN}",\n')
+                f.write('    "cookies": {\n')
+                f.write(f'        "csrfToken": "{CSRF_TOKEN}",\n')
+                f.write(f'        "browserid": "{BROWSER_ID}",\n')
+                f.write(f'        "lang": "{LANG}",\n')
+                f.write(f'        "ndus": "{NDUS}",\n')
+                f.write(f'        "ndut_fmt": "{NDUT_FMT}"\n')
+                f.write('    }\n')
+                f.write("}\n")
+                f.close()
+        except Exception as e:
+            fmt.error("setup", "An error occurred while creating the secrets.json file.")
+            fmt.error("setup", f"More information about this error: {e}")
+            sys.exit()
+
+        fmt.success("setup", "secrets.json file created.")
+
+    if os.path.exists("settings.json"):
+        fmt.error("setup", "settings.json already exists in the current folder.")
+    else:
+        fmt.info("setup", "Creating settings.json file...")
+        fmt.info("setup", "Please enter the required information for the settings.json file.")
+
+        print("Enter the path to the source directory:")
+        SOURCE_DIR = input(": ")
+        if not SOURCE_DIR:
+            fmt.error("setup", "Invalid source directory.")
+            sys.exit()
+        if not os.path.exists(SOURCE_DIR):
+            fmt.error("setup", "Source directory does not exist.")
+            sys.exit()
+
+        print("Enter the path to the remote directory:")
+        REMOTE_DIR = input(": ")
+        if not REMOTE_DIR:
+            fmt.error("setup", "Invalid remote directory.")
+            sys.exit()
+
+        print("Do you want to move files to another directory after uploading? (yes/no)")
+        MOVE_FILES = input(": ")
+        if not MOVE_FILES:
+            fmt.error("setup", "Please input \"yes\" or \"no\" for move files setting")
+            sys.exit()
+        if MOVE_FILES.lower() not in ("yes", "no"):
+            fmt.error("setup", "Invalid move files setting.")
+            fmt.error("setup", "Defaulting to \"false\"/no moving files.")
+            MOVE_FILES = "false"
+        if MOVE_FILES.lower() == "yes":
+            print("Enter the path to the uploaded directory:")
+            UPLOADED_DIR = input(": ")
+            if not UPLOADED_DIR:
+                fmt.error("setup", "Invalid uploaded directory.")
+                sys.exit()
+            if not os.path.exists(UPLOADED_DIR):
+                fmt.error("setup", "Destination directory of uploaded files does not exist.")
+                sys.exit()
+            MOVE_FILES = "true"
+        else:
+            MOVE_FILES = "false"
+            UPLOADED_DIR = ""
+
+        print("Do you want to delete the source files after uploading? (yes/no)")
+        DELETE_SOURCE = input(": ")
+        if not DELETE_SOURCE:
+            fmt.error("setup", "Please input \"yes\" or \"no\" for delete source setting.")
+            sys.exit()
+        if DELETE_SOURCE.lower() not in ("yes", "no"):
+            fmt.error("setup", "Invalid delete source setting. Defaulting to \"false\"/no deletion.")
+            DELETE_SOURCE = "false"
+        if DELETE_SOURCE.lower() == "yes":
+            DELETE_SOURCE = "true"
+        else:
+            DELETE_SOURCE = "false"
+
+        print("Do you want to enable file encryption? (yes/no)")
+        ENCRYPTION_ENAB = input(": ")
+        if not ENCRYPTION_ENAB:
+            fmt.error("setup", "Please input \"yes\" or \"no\" for encryption setting.")
+            sys.exit()
+        if ENCRYPTION_ENAB.lower() not in ("yes", "no"):
+            fmt.error("setup", "Invalid encryption setting.")
+            fmt.error("setup", "Defaulting to \"false\"/no encryption.")
+            ENCRYPTION_ENAB = "false"
+        if ENCRYPTION_ENAB.lower() == "yes":
+            print("Enter the path to the encryption key:")
+            ENCRYPTION_KEY = input(": ")
+            if not ENCRYPTION_KEY:
+                fmt.error("setup", "Please input a valid path to the encryption key.")
+                sys.exit()
+            if os.path.exists(ENCRYPTION_KEY):
+                ENCRYPTION_ENAB = "true"
+                fmt.success("setup", "Encryption key found.")
+                fmt.success("setup", "Type of encryption key: " + Encryption().get_key_type(ENCRYPTION_KEY))
+            else:
+                fmt.info("setup", "Generating encryption key...")
+                encrypt = Encryption()
+                encrypt.generate_key(ENCRYPTION_KEY)
+                ENCRYPTION_ENAB = "true"
+                fmt.success("setup", "Encryption key generated successfully.")
+        else:
+            ENCRYPTION_ENAB = "false"
+            ENCRYPTION_KEY = ""
+
+        print("Do you want to ignore specific files? (yes/no)")
+        IGNORE_FILES = input(": ")
+        if not IGNORE_FILES:
+            fmt.error("setup", "Invalid ignore files setting.")
+            sys.exit()
+        if IGNORE_FILES.lower() not in ("yes", "no"):
+            fmt.error("setup", "Invalid ignore files setting.")
+        if IGNORE_FILES.lower() == "yes":
+            print("Enter the files to ignore separated by a comma (,):")
+            IGNORED_FILES = input(": ")
+            if not IGNORED_FILES:
+                fmt.error("setup", "Invalid ignored files setting.")
+                sys.exit()
+            IGNORED_FILES = [x.strip() for x in IGNORED_FILES.split(",")]
+        else:
+            IGNORED_FILES = []
+
+        print("Do you want to show the quota information after each upload? (yes/no)")
+        SHOW_QUOTA = input(": ")
+        if not SHOW_QUOTA:
+            fmt.error("setup", "Invalid show quota setting.")
+            sys.exit()
+        if SHOW_QUOTA.lower() not in ("yes", "no"):
+            fmt.error("setup", "Invalid show quota setting.")
+        if SHOW_QUOTA.lower() == "yes":
+            SHOW_QUOTA = "true"
+        else:
+            SHOW_QUOTA = "false"
+
+        try:
+            with open("settings.json", "w", encoding="utf8") as f:
+                f.write("{\n")
+                f.write('  "directories": {\n')
+                f.write(f'    "sourcedir": "{SOURCE_DIR}",\n')
+                f.write(f'    "remotedir": "{REMOTE_DIR}",\n')
+                f.write(f'    "uploadeddir": "{UPLOADED_DIR}"\n')
+                f.write('  },\n')
+                f.write('  "files": {\n')
+                f.write(f'    "movefiles": "{MOVE_FILES}",\n')
+                f.write(f'    "deletesource": "{DELETE_SOURCE}"\n')
+                f.write('  },\n')
+                f.write('  "encryption": {\n')
+                f.write(f'    "enabled": "{ENCRYPTION_ENAB}",\n')
+                f.write(f'    "encryptionkey": "{ENCRYPTION_KEY}"\n')
+                f.write('  },\n')
+                f.write('  "ignoredfiles": ["' + '", "'.join(IGNORED_FILES) + '"],\n')
+                f.write('  "appearance": {\n')
+                f.write(f'    "showquota": "{SHOW_QUOTA}"\n')
+                f.write('  }\n')
+                f.write("}\n")
+                f.close()
+            fmt.success("setup", "settings.json file created.")
+        except Exception as e:
+            fmt.error("setup", "An error occurred while creating the settings.json file.")
+            fmt.error("setup", f"More information about this error: {e}")
+            sys.exit()
+
+    fmt.info("setup", "Setup completed. Please run the program again without the 'setup' argument.")
+    sys.exit()
+
 # CURL INSTALLATION
 CURL_URL = "https://curl.se/windows/dl-8.5.0_5/curl-8.5.0_5-win64-mingw.zip"
 if os.name == "nt":
@@ -75,70 +287,103 @@ else:
     else:
         fmt.info("CURL", "Curl is already installed or exists in the current folder.")
 
-# TERABOX AUTHENTICATION
-if not os.path.exists("secrets.json"):
+try:
+    if not os.path.exists("settings.json"):
+        fmt.error("settings", "settings.json file not found.")
+        fmt.error("settings", "Please create a settings.json file by running the program with the 'setup'"
+                              " argument or following the README.md.")
+        sys.exit()
+
+    with open("secrets.json", "r", encoding="utf8") as f:
+        try:
+            secrets = json.load(f)
+        except json.JSONDecodeError as e:
+            fmt.error("auth", "Invalid JSON format in secrets.json.")
+            fmt.error("auth", f"More information about this error: {e}")
+            sys.exit()
+        except Exception as e:
+            fmt.error("auth", "An error occurred while reading the secrets.json file.")
+            fmt.error("auth", f"More information about this error: {e}")
+            sys.exit()
+
+        try:
+            JSTOKEN = secrets["jstoken"]
+            COOKIES = secrets["cookies"]
+            COOKIES_STR = ""
+            for key, value in COOKIES.items():
+                COOKIES_STR += f"{key}={value};"
+            f.close()
+
+            if not any(char.isdigit() for char in JSTOKEN):
+                fmt.error("auth", "Invalid jstoken.")
+                sys.exit()
+            fmt.success("auth", "Loaded authentication tokens.")
+        except KeyError as e:
+            fmt.error("auth", f"Key {e} not found in secrets.json.")
+            f.close()
+            sys.exit()
+        except Exception as e:
+            fmt.error("auth", "An error occurred while reading the secrets.json file.")
+            fmt.error("auth", f"More information about this error: {e}")
+            f.close()
+            sys.exit()
+except FileNotFoundError as e:
     fmt.error("auth", "secrets.json file not found.")
-    fmt.error("auth", "Please create a secrets.json file with the following format:")
-    fmt.error("auth", "{")
-    fmt.error("auth", '    "jstoken": "your jstoken token",')
-    fmt.error("auth", '    "cookies": {')
-    fmt.error("auth", '        "csrfToken": "your csrfToken token",')
-    fmt.error("auth", '        "browserid": "your browserid",')
-    fmt.error("auth", '        "lang": "your lang (NOT REQUIRED)",')
-    fmt.error("auth", '        "ndus": "your ndus token",')
-    fmt.error("auth", '        "ndut_fmt": "your ndut_fmt token"')
-    fmt.error("auth", '    }')
-    fmt.error("auth", "}")
+    fmt.error("auth", f"More information about this error: {e}")
+    sys.exit()
+except Exception as e:
+    fmt.error("auth", "An error occurred while reading the secrets.json file.")
+    fmt.error("auth", f"More information about this error: {e}")
     sys.exit()
 
-with open("secrets.json", "r", encoding="utf8") as f:
-    secrets = json.load(f)
-    jstoken = secrets["jstoken"]
-    cookies = secrets["cookies"]
-    COOKIES_STR = ""
-    for key, value in cookies.items():
-        COOKIES_STR += f"{key}={value};"
-    f.close()
+try:
+    if not os.path.exists("settings.json"):
+        fmt.error("settings", "settings.json file not found.")
+        fmt.error("settings",
+                  "Please create a settings.json file by running the program with the 'setup' argument or following "
+                  "the README.md.")
+        sys.exit()
 
-if not any(char.isdigit() for char in jstoken):
-    fmt.error("auth", "Invalid jstoken.")
-    sys.exit()
-fmt.success("auth", "Loaded authentication tokens.")
+    with open("settings.json", "r", encoding="utf8") as f:
+        try:
+            settings = json.load(f)
+        except json.JSONDecodeError as e:
+            fmt.error("settings", "Invalid JSON format in settings.json.")
+            fmt.error("settings", f"More information about this error: {e}")
+            sys.exit()
+        except Exception as e:
+            fmt.error("settings", "An error occurred while reading the settings.json file.")
+            fmt.error("settings", f"More information about this error: {e}")
+            sys.exit()
 
-# PROGRAM CONFIGURATION
-if not os.path.exists("settings.json"):
+        try:
+            SOURCE_DIR = settings["directories"].get("sourcedir", "")
+            REMOTELOC = settings["directories"].get("remotedir", "")
+            MOVETOLOC = settings["directories"].get("uploadeddir", "")
+            MOVEFILES = settings["files"].get("movefiles", "false").lower() == "true"
+            DELSRCFIL = settings["files"].get("deletesource", "false").lower() == "true"
+            ENCRYPTFL = settings["encryption"].get("enabled", "false").lower() == "true"
+            ENCRYPKEY = settings["encryption"].get("encryptionkey", "")
+            IGNOREFIL = settings.get("ignoredfiles", [])
+            SHOWQUOTA = settings["appearance"].get("showquota", "false").lower() == "true"
+        except KeyError as e:
+            fmt.error("settings", f"Key {e} not found in settings.json.")
+            fmt.error("settings", "Please check your settings.json file and the README.md file for these "
+                                  "configurations.")
+            sys.exit()
+        except Exception as e:
+            fmt.error("settings", "An error occurred while reading the settings.json file.")
+            fmt.error("settings", f"More information about this error: {e}")
+            sys.exit()
+        f.close()
+except FileNotFoundError as e:
     fmt.error("settings", "settings.json file not found.")
-    fmt.error("settings", "Please create a settings.json file with the following format:")
-    fmt.error("settings", "{")
-    fmt.error("settings", '    "directories": {')
-    fmt.error("settings", '        "sourcedir": "path to the source directory",')
-    fmt.error("settings", '        "remotedir": "path to the remote directory",')
-    fmt.error("settings", '        "uploadeddir": "path to the uploaded directory"')
-    fmt.error("settings", '    },')
-    fmt.error("settings", '    "files": {')
-    fmt.error("settings", '        "movefiles": "true or false",')
-    fmt.error("settings", '        "deletesource": "true or false"')
-    fmt.error("settings", '    },')
-    fmt.error("settings", '    "encryption": {')
-    fmt.error("settings", '        "enabled": "true or false",')
-    fmt.error("settings", '        "encryptionkey": "path to the encryption key"')
-    fmt.error("settings", '    },')
-    fmt.error("settings", '    "ignoredfiles": ["file1", "file2", "file3", "file4"]')
-    fmt.error("settings", "}")
+    fmt.error("settings", f"More information about this error: {e}")
     sys.exit()
-
-with open("settings.json", "r", encoding="utf8") as f:
-    settings = json.load(f)
-    SOURCE_DIR = settings["directories"]["sourcedir"]
-    remoteloc = settings["directories"]["remotedir"]
-    movetoloc = settings["directories"]["uploadeddir"]
-    MOVEFILES = settings["files"]["movefiles"].lower() == "true"
-    DELSRCFIL = settings["files"]["deletesource"].lower() == "true"
-    ENCRYPTFL = settings["encryption"]["enabled"].lower() == "true"
-    ENCRYPKEY = settings["encryption"]["encryptionkey"]
-    IGNOREFIL = settings["ignoredfiles"]
-    SHOWQUOTA = settings["appearance"]["showquota"].lower() == "true"
-    f.close()
+except Exception as e:
+    fmt.error("settings", "An error occurred while reading the settings.json file.")
+    fmt.error("settings", f"More information about this error: {e}")
+    sys.exit()
 
 if DELSRCFIL and MOVEFILES:
     fmt.error("settings",
@@ -146,15 +391,15 @@ if DELSRCFIL and MOVEFILES:
     fmt.error("settings", "Please check your settings.json file for these configurations.")
     sys.exit()
 
-if not SOURCE_DIR or not remoteloc or not movetoloc:
-    fmt.error("settings", "Invalid directory paths.")
+if not SOURCE_DIR or not REMOTELOC:
+    fmt.error("settings", "Invalid directory paths. Please check the settings.json file for missing paths.")
     sys.exit()
 
 if not os.path.exists(SOURCE_DIR) and not os.path.isdir(SOURCE_DIR):
     fmt.error("settings", "Source directory does not exist. Please check the path.")
     sys.exit()
 
-if not os.path.exists(movetoloc) and not os.path.isdir(movetoloc) and MOVEFILES:
+if not os.path.exists(MOVETOLOC) and not os.path.isdir(MOVETOLOC) and MOVEFILES:
     fmt.error("settings", "Move to directory does not exist. Please check the path.")
     sys.exit()
 
@@ -165,13 +410,19 @@ if not ENCRYPTFL:
     fmt.warning("encryption",
                 "For full security of your files, please enable file encryption in the settings.json "
                 "file.")
-
-encrypt = Encryption()
-
-if ENCRYPTFL and not os.path.exists(ENCRYPKEY):
-    fmt.info("encryption", "Generating encryption key...")
-    encrypt.generate_key(ENCRYPKEY)
-    fmt.success("encryption", "Encryption key generated successfully.")
+else:
+    encrypt = Encryption()
+    if not ENCRYPKEY:
+        fmt.error("encryption", "Encryption key path is not set.")
+        sys.exit()
+    if not os.path.exists(ENCRYPKEY):
+        fmt.warning("encryption", "Encryption key file does not exist.")
+        fmt.info("encryption", "Generating encryption key...")
+        encrypt.generate_key(ENCRYPKEY)
+        fmt.success("encryption", "Encryption key generated successfully.")
+    else:
+        fmt.success("encryption", "Encryption key found.")
+        fmt.success("encryption", "Type of encryption key: " + encrypt.get_key_type(ENCRYPKEY))
 
 fmt.success("settings", "Loaded settings.")
 
@@ -208,9 +459,9 @@ def fetch_remote_directory(remote_dir: str) -> list:
                        headers={"User-Agent": USERAGENT, "Origin": BASEURLTB,
                                 "Referer": BASEURLTB + "/main?category=all",
                                 "Content-Type": "application/x-www-form-urlencoded"},
-                       cookies=cookies,
+                       cookies=COOKIES,
                        data={"app_id": "250528", "web": "1", "channel": "dubox", "clienttype": "0",
-                             "jsToken": f"{jstoken}", "dir": f"{remote_dir}", "num": "1000", "page": "1"}, timeout=10)
+                             "jsToken": f"{JSTOKEN}", "dir": f"{remote_dir}", "num": "1000", "page": "1"}, timeout=10)
     response = json.loads(req.text)["list"]
     items = []
     for entry in response:
@@ -238,10 +489,10 @@ def precreate_file(filename: str, md5json_pc_local: str) -> str:
                                     headers={"User-Agent": USERAGENT, "Origin": BASEURLTB,
                                              "Referer": BASEURLTB + "/main?category=all",
                                              "Content-Type": "application/x-www-form-urlencoded"},
-                                    cookies=cookies,
+                                    cookies=COOKIES,
                                     data={"app_id": "250528", "web": "1", "channel": "dubox", "clienttype": "0",
-                                          "jsToken": f"{jstoken}", "path": f"{remoteloc}/{filename}", "autoinit": "1",
-                                          "target_path": f"{remoteloc}", "block_list": f"{md5json_pc_local}"},
+                                          "jsToken": f"{JSTOKEN}", "path": f"{REMOTELOC}/{filename}", "autoinit": "1",
+                                          "target_path": f"{REMOTELOC}", "block_list": f"{md5json_pc_local}"},
                                     timeout=10)
         if "uploadid" in preresponse.text:
             return json.loads(preresponse.text)["uploadid"]
@@ -277,7 +528,7 @@ def upload_file(filename: str, uploadid_local: str, md5hash: str, partseq: int =
                         "-b", f"{COOKIES_STR}",
                         "-F", f"file=@{filename}",
                         f"{BASEURLTB.replace('www', 'c-jp')}:443/rest/2.0/pcs/superfile2?"
-                        f"method=upload&type=tmpfile&app_id=250528&path={quote_plus(remoteloc + '/' + filename)}&"
+                        f"method=upload&type=tmpfile&app_id=250528&path={quote_plus(REMOTELOC + '/' + filename)}&"
                         f"uploadid={uploadid_local}&partseq={partseq}"]
         if os.name == "nt":
             base_command[0] = "curl/bin/curl.exe"
@@ -314,10 +565,10 @@ def create_file(cloudpath_local: str, uploadid_local: str, sizebytes: int, md5js
     crresponse = requests.post(f"{BASEURLTB}/api/create",
                                headers={"User-Agent": USERAGENT, "Origin": BASEURLTB,
                                         "Content-Type": "application/x-www-form-urlencoded"},
-                               cookies=cookies,
-                               params={"isdir": "0", "rtype": "1", "app_id": "250528", "jsToken": f"{jstoken}"},
+                               cookies=COOKIES,
+                               params={"isdir": "0", "rtype": "1", "app_id": "250528", "jsToken": f"{JSTOKEN}"},
                                data={"path": f"{cloudpath_local}", "uploadid": f"{uploadid_local}",
-                                     "target_path": f"{remoteloc}/", "size": f"{sizebytes}",
+                                     "target_path": f"{REMOTELOC}/", "size": f"{sizebytes}",
                                      "block_list": f"{md5json_local}"},
                                timeout=10)
     return crresponse
@@ -356,7 +607,7 @@ vip = json.loads(requests.get(f"{BASEURLTB}/rest/2.0/membership/proxy/user?metho
                               headers={"User-Agent": USERAGENT, "Origin": BASEURLTB,
                                        "Referer": BASEURLTB + "/main?category=all",
                                        "Content-Type": "application/x-www-form-urlencoded"},
-                              cookies=cookies, timeout=19).text)["data"]["member_info"]["is_vip"]
+                              cookies=COOKIES, timeout=19).text)["data"]["member_info"]["is_vip"]
 fmt.success("vip", f"You are a {'vip' if vip == 1 else 'non-vip'} user.")
 
 
@@ -381,7 +632,7 @@ def get_files_in_directory(find_dir, base_directory) -> dict:
             sizebytes = os.path.getsize(full_path)
             relpath = os.path.relpath(full_path, base_directory)
             dir_files.setdefault(find_dir, []).append({"name": filename, "relative_path": relpath, "sizebytes":
-                sizebytes, "encrypted": False, "encrypterror": False})
+                                                       sizebytes, "encrypted": False, "encrypterror": False})
         elif os.path.isdir(full_path):
             dir_files.update(get_files_in_directory(full_path, base_directory))
     return dir_files
@@ -397,6 +648,7 @@ if len(files) == 0:
 
 # ENCRYPTION (IF ENABLED)
 if ENCRYPTFL:
+    encrypt = Encryption()
     if len(files) == 0:
         fmt.success("encrypt", "No files to encrypt.")
 
@@ -433,7 +685,7 @@ if ENCRYPTFL:
                 ERRORS = True
                 continue
 
-remote_files = fetch_remote_directory(remoteloc)
+remote_files = fetch_remote_directory(REMOTELOC)
 for directory, files_in_directory in files.items():
     if not files_in_directory:
         continue
@@ -464,9 +716,9 @@ for directory, files_in_directory in files.items():
 
         if SHOWQUOTA:
             # QUOTA CALCULATIONS
-            quotareq = requests.get("{BASEURLTB}/api/quota?checkfree=1",
+            quotareq = requests.get("https://{BASEURLTB}/api/quota?checkfree=1",
                                     headers={"User-Agent": USERAGENT},
-                                    cookies=cookies, timeout=10)
+                                    cookies=COOKIES, timeout=10)
             quota = json.loads(quotareq.text)
             aviquot = quota['total'] - quota['used']  # available quota
 
@@ -521,10 +773,10 @@ for directory, files_in_directory in files.items():
 
         # Preinitialize the full file on the cloud
         fmt.info("precreate", "Precreating file...")
-        relative_path = os.path.join(remoteloc, file['relative_path'].replace(directory, ''))
+        relative_path = os.path.join(REMOTELOC, file['relative_path'].replace(directory, ''))
         if file['encrypted']:
             relative_path += '.enc'
-        uploadid = precreate_file(os.path.join(str(remoteloc), str(file['relative_path'].replace(str(directory), ''))),
+        uploadid = precreate_file(os.path.join(str(REMOTELOC), str(file['relative_path'].replace(str(directory), ''))),
                                   md5json)
         if uploadid == "fail":
             ERRORS = True
@@ -564,9 +816,9 @@ for directory, files_in_directory in files.items():
 
         if MOVEFILES:
             fmt.info("move",
-                     f"Moving file {SOURCE_DIR}/{file['name']} to {movetoloc}/{file['name']}...")
+                     f"Moving file {SOURCE_DIR}/{file['name']} to {MOVETOLOC}/{file['name']}...")
             try:
-                os.rename(f"{SOURCE_DIR}/{file['name']}", f"{movetoloc}/{file['name']}")
+                os.rename(f"{SOURCE_DIR}/{file['name']}", f"{MOVETOLOC}/{file['name']}")
                 fmt.success("move", f"File {file['name']} moved successfully to destination.")
             except Exception as e:
                 fmt.error("move", f"File {file['name']} could not be moved.")
