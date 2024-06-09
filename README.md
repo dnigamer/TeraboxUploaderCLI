@@ -3,6 +3,7 @@ Python CLI tool to make uploads to your Terabox cloud from any Linux or Windows 
 
 
 ## Configuration
+
 ### Getting the JS Token
 To use this tool you need to have a Terabox account and a JS Token key. You can get the session JS Token by logging into your Terabox account and following the sequence of steps below:
 
@@ -38,6 +39,15 @@ Additionally to the JS Token, you will need to capture the cookies values. You c
 
 You will need to copy the csrfToken, browserid, lang, ndus, and ndut_fmt values. This step is required to make the tool be compatible with the Terabox API as much as possible. Even though there are some paramters that are not directly used by the Terabox API, they can still create problems if they are not present in the request headers.
 
+## Building the JSON files
+### Automated JSON template creation
+If you don't want to create the JSON files manually, you can use the argument `setup` to create the `secrets.json` and `settings.json` files automatically. You can run the following command in the terminal to create the files:
+
+```sh
+python main.py setup
+```
+
+After running the command, the tool will ask you to input the values for your TeraBox credentials and the program settings values. You can then input the values and the tool will create the `secrets.json` and `settings.json` files automatically with the values you provided.
 
 ### Building the secrets.json file
 Create a file named `secrets.json` in the same directory as the `main.py` file. The file should have the following structure:
@@ -77,7 +87,10 @@ Create a file named `settings.json` in the same directory as the `main.py` file.
     "enabled": "true or false",
     "encryptionkey": "your_encryption_key_here"
   },
-  "ignoredfiles": []
+  "ignoredfiles": [],
+  "appearance": {
+    "showquota": "true"
+  }
 }
 ```
 
