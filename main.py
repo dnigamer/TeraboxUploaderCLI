@@ -26,7 +26,7 @@ import requests
 from modules.encryption import Encryption, FileEncryptedException
 from modules.formatting import Formatting
 
-CODE_VERSION = "1.7.0"
+CODE_VERSION = "1.7.2"
 fmt = Formatting(timestamps=True)
 
 print("-" * 97)
@@ -253,20 +253,21 @@ if len(sys.argv) > 1 and sys.argv[1] == "setup":
     sys.exit()
 
 # CURL INSTALLATION
-CURL_URL = "https://curl.se/windows/dl-8.5.0_5/curl-8.5.0_5-win64-mingw.zip"
+CURL_URL = "https://curl.se/windows/dl-8.13.0_5/curl-8.13.0_5-win64-mingw.zip"
 if os.name == "nt":
     fmt.info("CURL", "Windows host detected. Checking if curl is installed...")
-    if not os.path.exists("curl/bin/curl.exe") or not os.path.exists("curl.exe"):
+    curl_path = os.path.join("curl", "bin", "curl.exe")
+    if not (os.path.exists(curl_path) or os.path.exists("curl.exe")):
         fmt.info("CURL", f"curl.exe not found. Downloading curl from {CURL_URL}...")
         curlreq = requests.get(CURL_URL, timeout=10)
         with open("curl.zip", "wb") as f:
             f.write(curlreq.content)
-            f.close()
         fmt.info("CURL", "Extracting curl...")
         with zipfile.ZipFile("curl.zip", "r") as zip_ref:
             zip_ref.extractall(".")
-            zip_ref.close()
-        os.rename("curl-8.5.0_5-win64-mingw", "curl")
+        extracted_dir = "curl-8.13.0_5-win64-mingw"
+        if os.path.exists(extracted_dir):
+            os.rename(extracted_dir, "curl")
         fmt.info("CURL", "Curl extracted.")
         os.remove("curl.zip")
     else:
@@ -428,7 +429,7 @@ fmt.success("settings", "Loaded settings.")
 
 # PROGRAM INTERNAL VARS
 USERAGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 14.2; rv:121.0) Gecko/20100101 Firefox/121.0"
-BASEURLTB = "https://www.terabox1024.com"
+BASEURLTB = "https://www.terabox.com"
 TEMP_DIR = "./temp"
 ERRORS = False
 
@@ -455,26 +456,54 @@ def fetch_remote_directory(remote_dir: str) -> list:
     :param remote_dir:
     :return: list of files/folders in the remote directory
     """
-    req = requests.get(f"{BASEURLTB}/api/list",
-                       headers={"User-Agent": USERAGENT, "Origin": BASEURLTB,
-                                "Referer": BASEURLTB + "/main?category=all",
-                                "Content-Type": "application/x-www-form-urlencoded"},
-                       cookies=COOKIES,
-                       data={"app_id": "250528", "web": "1", "channel": "dubox", "clienttype": "0",
-                             "jsToken": f"{JSTOKEN}", "dir": f"{remote_dir}", "num": "1000", "page": "1"}, timeout=10)
-    response = json.loads(req.text)["list"]
-    items = []
-    for entry in response:
-        listing = {
-            "name": entry["server_filename"],
-            "path": entry["path"],
-            "size": entry["size"],
-        }
-        if entry["isdir"] == 0:  # If the entry is a file, add the MD5 hash
-            items.append(listing)
-        if entry["isdir"] == 1:  # If the entry is a directory, recursively fetch its content
-            items.extend(fetch_remote_directory(entry["path"]))
-    return items
+    try:
+        req = requests.get(
+            f"{BASEURLTB}/api/list",
+            headers={
+                "User-Agent": USERAGENT,
+                "Referer": BASEURLTB + "/main"
+            },
+            cookies=COOKIES,
+            params={
+                "app_id": "250528",
+                "web": "1",
+                "channel": "dubox",
+                "clienttype": "0",
+                "jsToken": f"{JSTOKEN}",
+                "dir": f"{remote_dir}",
+                "num": "1000",
+                "page": "1",
+                "order": "time",
+                "desc": "1",
+                "showempty": "0"
+            },
+            timeout=10
+        )
+        data = json.loads(req.text)
+        if "errno" in data and data["errno"] != 0:
+            if data["errno"] == -7:
+                fmt.error("remote fetch", "Couldn't fetch remote directory. Check if the remote directory exists.")
+            if data["errno"] == -6:
+                fmt.error("remote fetch", "Couldn't fetch remote directory. Check if all the cookies are valid.")
+            else:
+                fmt.error("remote fetch", f"API error: {data}")
+            return []
+        response = data.get("list", [])
+        items = []
+        for entry in response:
+            listing = {
+                "name": entry["server_filename"],
+                "path": entry["path"],
+                "size": entry["size"],
+            }
+            if entry["isdir"] == 0:
+                items.append(listing)
+            if entry["isdir"] == 1:
+                items.extend(fetch_remote_directory(entry["path"]))
+        return items
+    except Exception as e:
+        fmt.error("remote fetch", f"Exception occurred: {e}")
+        return []
 
 
 def precreate_file(filename: str, md5json_pc_local: str) -> str:
@@ -686,6 +715,7 @@ if ENCRYPTFL:
                 continue
 
 remote_files = fetch_remote_directory(REMOTELOC)
+
 for directory, files_in_directory in files.items():
     if not files_in_directory:
         continue
@@ -716,7 +746,7 @@ for directory, files_in_directory in files.items():
 
         if SHOWQUOTA:
             # QUOTA CALCULATIONS
-            quotareq = requests.get("https://{BASEURLTB}/api/quota?checkfree=1",
+            quotareq = requests.get(f"{BASEURLTB}/api/quota?checkfree=1",
                                     headers={"User-Agent": USERAGENT},
                                     cookies=COOKIES, timeout=10)
             quota = json.loads(quotareq.text)
