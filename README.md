@@ -10,16 +10,19 @@ To use this tool you need to have a Terabox account and a JS Token key. You can 
 1. Open your Terabox cloud.
 2. Open the browser's developer tools (F12).<br/>
 ![Developer tools F12](<images/devf12.png>)
-3. Go to the "Network" tab.<br/>
+3. Enable the "Device Toolbar" then click the back arrow to get back to Terabox.<br/> 
+![Developer tools F12 "Device Toolbar"](<images/devf12devicetoolbar.png>) 
+![Back Arrow](<images/backarrow.png>)
+4. Go to the "Network" tab.<br/>
 ![Developer tools F12 Network tab](<images/devf12network.png>)
-4. Select the "XHR" filter.<br/>
+5. Select the "XHR" filter.<br/>
 ![Developer tools F12 XHR filter](<images/devf12fetch.png>)
-5. Click any directory or file in the cloud.
-6. Look for any request made to the Terabox cloud URL and click on it.<br/>
+6. Click any directory or file in the cloud.
+7. Look for any request made to the Terabox cloud URL and click on it.<br/>
 ![Developer tools F12 request item](<images/devf12list.png>)
-7. Select the "Payload" tab.<br/>
+8. Select the "Payload" tab.<br/>
 ![Developer tools F12 Payload tab](<images/devf12payload.png>)
-8. Look for the jsToken parameter in the list and copy its value.
+9. Look for the jsToken parameter in the list and copy its value.
 
 If you can't find the jsToken parameter, try selecting any other directory or file in the cloud and look for the jsToken parameter in the request payload. Make sure that you have the "XHR" filter selected and that you are looking at the "Payload" tab.
 
