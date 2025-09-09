@@ -26,7 +26,7 @@ import requests
 from modules.encryption import Encryption, FileEncryptedException
 from modules.formatting import Formatting
 
-CODE_VERSION = "1.7.5"
+CODE_VERSION = "1.7.6"
 fmt = Formatting(timestamps=True)
 
 print("-" * 97)
@@ -367,6 +367,16 @@ try:
             ENCRYPKEY = settings["encryption"].get("encryptionkey", "")
             IGNOREFIL = settings.get("ignoredfiles", [])
             SHOWQUOTA = settings["appearance"].get("showquota", "false").lower() == "true"
+            # normalize important paths to absolute paths so display helpers work reliably
+            try:
+                if SOURCE_DIR:
+                    SOURCE_DIR = os.path.abspath(SOURCE_DIR)
+                if MOVETOLOC:
+                    MOVETOLOC = os.path.abspath(MOVETOLOC)
+                if ENCRYPKEY:
+                    ENCRYPKEY = os.path.abspath(ENCRYPKEY)
+            except Exception:
+                pass
         except KeyError as e:
             fmt.error("settings", f"Key {e} not found in settings.json.")
             fmt.error("settings", "Please check your settings.json file and the README.md file for these "
@@ -432,6 +442,57 @@ USERAGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 14.2; rv:121.0) Gecko/201001
 BASEURLTB = "https://www.terabox.com"
 TEMP_DIR = "./temp"
 ERRORS = False
+
+
+def _short_path(path: str, prefer_base: str | None = None) -> str:
+    """
+    Return a short display path for logs.
+    - Prefer a path relative to cwd when possible.
+    - If that results in a leading '..', and prefer_base is provided, return a path relative to prefer_base
+      prefixed with the base directory name (e.g. 'source/sub1/file').
+    - Fall back to absolute path if relpaths fail.
+    Paths are returned using the OS-native separators.
+    """
+    try:
+        abs_path = os.path.abspath(path)
+    except Exception:
+        return str(path)
+
+    # If we have a prefer_base (usually SOURCE_DIR), try to show path relative to it
+    if prefer_base:
+        try:
+            abs_base = os.path.abspath(prefer_base)
+            # If path is inside prefer_base, show as 'basename_of_base/relative/path'
+            try:
+                common = os.path.commonpath([abs_path, abs_base])
+            except Exception:
+                common = None
+            if common == abs_base:
+                rel = os.path.relpath(abs_path, abs_base)
+                if rel == '.' or rel == './':
+                    return os.path.normpath(os.path.basename(abs_base))
+                return os.path.normpath(os.path.join(os.path.basename(abs_base), rel))
+
+            # If not strictly inside, try relative to parent of prefer_base to get 'source/..' style
+            base_parent = os.path.dirname(abs_base)
+            try:
+                rel2 = os.path.relpath(abs_path, base_parent)
+                if not rel2.startswith('..'):
+                    return os.path.normpath(rel2)
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    # Fallback to a relpath to cwd if it doesn't go outside, otherwise absolute
+    try:
+        relcwd = os.path.relpath(abs_path, os.getcwd())
+        if not relcwd.startswith('..'):
+            return os.path.normpath(relcwd)
+    except Exception:
+        pass
+
+    return os.path.normpath(abs_path)
 
 
 # PROGRAM FUNCTIONS
@@ -568,7 +629,7 @@ def upload_file(local_path: str, cloud_filename: str, uploadid_local: str, md5ha
         if 'error_code' not in uresp:
             # show a shorter, repo-relative path for readability
             try:
-                display_local = os.path.relpath(local_path, os.getcwd())
+                display_local = _short_path(local_path, prefer_base=SOURCE_DIR)
             except Exception:
                 display_local = os.path.basename(local_path)
             fmt.success("upload", f"File {display_local} uploaded successfully to cloud path {REMOTELOC}/{cloud_filename}.")
@@ -675,7 +736,7 @@ def get_files_in_directory(find_dir, base_directory) -> dict:
 
 # Loop through files in source directory and add to array
 try:
-    display_source = os.path.relpath(SOURCE_DIR, os.getcwd())
+    display_source = _short_path(SOURCE_DIR, prefer_base=SOURCE_DIR)
 except Exception:
     display_source = SOURCE_DIR
 fmt.info("upload", f"Checking files in {display_source}...")
@@ -738,10 +799,7 @@ for directory, files_in_directory in files.items():
         for remote_file in remote_files:
             if remote_file["path"].endswith(file["relative_path"].replace("\\", "/")):
                 abs_path = os.path.abspath(os.path.join(str(directory), str(file["name"])))
-                try:
-                    display_local = os.path.relpath(abs_path, os.getcwd())
-                except Exception:
-                    display_local = abs_path
+                display_local = _short_path(abs_path, prefer_base=SOURCE_DIR)
                 fmt.warning("upload", f"File {file['name']} (OS path: {display_local}) already exists on the cloud. Skipping file...")
                 REMOTE_FOUND = True
                 break
@@ -860,10 +918,7 @@ for directory, files_in_directory in files.items():
         fmt.info("upload", f"Finalizing file {file['relative_path'].replace('\\\\','/')} upload...")
         create = create_file(str(cloudpath), uploadid, file['sizebytes'], md5json)
         if json.loads(create.text)["errno"] == 0:
-            try:
-                display_local = os.path.relpath(local_file_path, os.getcwd())
-            except Exception:
-                display_local = os.path.basename(local_file_path)
+            display_local = _short_path(local_file_path, prefer_base=SOURCE_DIR)
             fmt.success("upload", f"File {display_local} uploaded and saved on cloud successfully.")
             fmt.success("upload", f"The file is now available at {cloudpath} in the cloud.")
         else:
@@ -903,10 +958,7 @@ for directory, files_in_directory in files.items():
             return os.fspath(p)
 
     abs_path = os.path.abspath(os.path.join(directory, file["name"]))
-    try:
-        display_local = os.path.relpath(abs_path, os.getcwd())
-    except Exception:
-        display_local = abs_path
+    display_local = _short_path(abs_path, prefer_base=SOURCE_DIR)
     fmt.success("upload", f"File {display_local} concluded every upload procedure.")
 
 if not ERRORS:
