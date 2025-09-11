@@ -22,11 +22,13 @@ import hashlib
 import zipfile
 from urllib.parse import quote_plus
 import requests
+from typing import Optional
+import base64
 
 from modules.encryption import Encryption, FileEncryptedException
 from modules.formatting import Formatting
 
-CODE_VERSION = "1.7.6"
+CODE_VERSION = "1.8"
 fmt = Formatting(timestamps=True)
 
 print("-" * 97)
@@ -444,7 +446,7 @@ TEMP_DIR = "./temp"
 ERRORS = False
 
 
-def _short_path(path: str, prefer_base: str | None = None) -> str:
+def _short_path(path: str, prefer_base: Optional[str] = None) -> str:
     """
     Return a short display path for logs.
     - Prefer a path relative to cwd when possible.
@@ -785,181 +787,197 @@ if ENCRYPTFL:
                 ERRORS = True
                 continue
 
+def _process_single_file_entry(directory, file, remote_files):
+    global ERRORS
+    # Safe, forward-slash relative path for logging and cloud comparisons
+    rel_disp = file['relative_path'].replace('\\', '/')
+
+    # Skip if file already exists remotely
+    for remote_file in remote_files:
+        if remote_file["path"].endswith(rel_disp):
+            abs_path = os.path.abspath(os.path.join(str(directory), str(file["name"])))
+            display_local = _short_path(abs_path, prefer_base=SOURCE_DIR)
+            fmt.warning("upload", f"File {file['name']} (OS path: {display_local}) already exists on the cloud. Skipping file...")
+            return
+
+    # Local source directory selection
+    if file['encrypted']:
+        local_source_dir = TEMP_DIR
+        fmt.debug("file", f"File {rel_disp} is encrypted. Using source directory as {TEMP_DIR}.")
+    else:
+        local_source_dir = settings["directories"]["sourcedir"]
+        fmt.debug("file", f"File {rel_disp} is not encrypted. Using source directory as {local_source_dir}.")
+
+    fmt.info("upload", f"Uploading {rel_disp}...")
+
+    # Quota check
+    if SHOWQUOTA:
+        quotareq = requests.get(
+            f"{BASEURLTB}/api/quota?checkfree=1",
+            headers={"User-Agent": USERAGENT},
+            cookies=COOKIES,
+            timeout=10,
+        )
+        quota = json.loads(quotareq.text)
+        aviquot = quota['total'] - quota['used']
+        fmt.debug("quota", f"Available quota: {convert_size(aviquot)}")
+        if aviquot < file['sizebytes']:
+            fmt.error("quota", f"Not enough quota available for file {file['name']}.")
+            return
+        fmt.debug("quota", f"Available quota after the upload: {convert_size(aviquot - file['sizebytes'])}")
+
+    # Resolve local file path
+    local_file_path = os.path.abspath(os.path.join(local_source_dir, file['relative_path']))
+    if file['encrypted']:
+        local_file_path = os.path.abspath(os.path.join(TEMP_DIR, file['name']))
+    if not os.path.exists(local_file_path):
+        try:
+            display_missing = _short_path(local_file_path, prefer_base=SOURCE_DIR)
+        except Exception:
+            display_missing = local_file_path
+        fmt.error(
+            "upload",
+            f"File {display_missing} does not exist on the source directory anymore. Skipping file...",
+        )
+        ERRORS = True
+        return
+
+    # Size limits
+    if (vip == 1 and file['sizebytes'] >= 21474836479) or (vip == 0 and file['sizebytes'] >= 4294967296):
+        fmt.error(
+            "upload",
+            f"File {file['name']} is too big for the type of account you have. Skipping file...",
+        )
+        fmt.error("upload", f"File size: {convert_size(file['sizebytes'])}")
+        fmt.error("upload", f"Maximum file size for your account: {'20GB' if vip == 1 else '4GB'}")
+        ERRORS = True
+        return
+
+    # Build upload pieces and MD5 list
+    pieces = []
+    md5dict = []
+    if file['sizebytes'] >= 2147483648:
+        fmt.info("split", "File size is greater than 2GB. Splitting original file in chunks...")
+        CHUNK_SIZE = 120 * 1024 * 1024
+        num_chunks = int(os.path.getsize(local_file_path) / CHUNK_SIZE)
+        fmt.debug("split", f"File will be split in {num_chunks} chunks.")
+        for i in range(num_chunks):
+            chunk_filename = os.path.join(TEMP_DIR, f"{file['name']}.part{i:03d}")
+            with open(local_file_path, 'rb') as f, open(chunk_filename, 'wb') as chunk_file:
+                f.seek(i * CHUNK_SIZE)
+                chunk = f.read(CHUNK_SIZE)
+                chunk_file.write(chunk)
+                md5dict.append(hashlib.md5(chunk).hexdigest())
+            pieces.append(chunk_filename)
+        fmt.success("split", f"File split successfully in {len(pieces)} pieces.")
+    else:
+        with open(local_file_path, 'rb') as md5_file:
+            md5dict = [hashlib.md5(md5_file.read()).hexdigest()]
+        fmt.info("md5", f"MD5 hash calculated for file {rel_disp}.")
+        pieces.append(local_file_path)
+    md5json = json.dumps(md5dict)
+
+    # Precreate on cloud
+    fmt.info("precreate", f"Precreating cloud file {rel_disp}...")
+    cloud_relative = rel_disp + ('.enc' if file['encrypted'] else '')
+    uploadid = precreate_file(cloud_relative, md5json)
+    if uploadid == 'fail':
+        ERRORS = True
+        return
+    cloudpath = (os.path.join(REMOTELOC, cloud_relative)).replace('\\', '/')
+
+    # Upload
+    upload_failed = False
+    if len(pieces) > 1:
+        for idx, pi in enumerate(pieces):
+            resp = upload_file(pi, cloud_relative, uploadid, md5dict[idx], idx)
+            if resp in ("failed", "mismatch"):
+                upload_failed = True
+                break
+    else:
+        resp = upload_file(pieces[0], cloud_relative, uploadid, md5dict[0])
+        if resp in ("failed", "mismatch"):
+            upload_failed = True
+    if upload_failed:
+        ERRORS = True
+        return
+
+    # Create the file on the cloud
+    fmt.info("upload", f"Finalizing file {rel_disp} upload...")
+    create = create_file(str(cloudpath), uploadid, file['sizebytes'], md5json)
+    success_create = json.loads(create.text).get("errno") == 0
+    if success_create:
+        display_local = _short_path(local_file_path, prefer_base=SOURCE_DIR)
+        fmt.success("upload", f"File {display_local} uploaded and saved on cloud successfully.")
+        fmt.success("upload", f"The file is now available at {cloudpath} in the cloud.")
+    else:
+        fmt.error("upload", f"File {file['name']} upload failed.")
+        fmt.error("upload", f"More information: {create}")
+        ERRORS = True
+        return
+
+    # Move/delete
+    if MOVEFILES:
+        try:
+            src_move = os.path.abspath(os.path.join(local_source_dir, file['relative_path']))
+            dst_move = os.path.abspath(os.path.join(MOVETOLOC, os.path.basename(file['relative_path'])))
+            try:
+                display_src_move = _short_path(src_move, prefer_base=SOURCE_DIR)
+            except Exception:
+                display_src_move = src_move
+            try:
+                display_dst_move = _short_path(
+                    dst_move, prefer_base=MOVETOLOC or os.path.dirname(dst_move)
+                )
+            except Exception:
+                display_dst_move = dst_move
+            fmt.info("move", f"Moving file {display_src_move} to {display_dst_move}...")
+            os.rename(src_move, dst_move)
+            fmt.success("move", f"File {file['name']} moved successfully to destination.")
+        except Exception as e:
+            fmt.error("move", f"File {file['name']} could not be moved.")
+            fmt.error("move", f"More information about this error: {e}")
+            ERRORS = True
+            return
+
+    if DELSRCFIL:
+        try:
+            src_del = os.path.abspath(os.path.join(local_source_dir, file['relative_path']))
+            try:
+                display_src_del = _short_path(src_del, prefer_base=SOURCE_DIR)
+            except Exception:
+                display_src_del = src_del
+            fmt.info("delete", f"Deleting file {display_src_del} from source directory...")
+            os.remove(src_del)
+            fmt.success("delete", f"File {file['name']} deleted successfully.")
+        except Exception as e:
+            fmt.error("delete", f"File {file['name']} could not be deleted.")
+            fmt.error("delete", f"More information about this error: {e}")
+            ERRORS = True
+            return
+
+    # Conclude per-file procedure
+    try:
+        final_path = (
+            local_file_path
+            if not file['encrypted']
+            else os.path.abspath(os.path.join(TEMP_DIR, file['name']))
+        )
+        display_local = _short_path(final_path, prefer_base=SOURCE_DIR)
+    except Exception:
+        display_local = file.get('name', 'unknown file')
+    fmt.success("upload", f"File {display_local} concluded every upload procedure.")
+
+
 remote_files = fetch_remote_directory(REMOTELOC)
 
 for directory, files_in_directory in files.items():
     if not files_in_directory:
         continue
-
     for file in files_in_directory:
         if file['encrypterror']:
             continue
-
-        REMOTE_FOUND = False
-        for remote_file in remote_files:
-            if remote_file["path"].endswith(file["relative_path"].replace("\\", "/")):
-                abs_path = os.path.abspath(os.path.join(str(directory), str(file["name"])))
-                display_local = _short_path(abs_path, prefer_base=SOURCE_DIR)
-                fmt.warning("upload", f"File {file['name']} (OS path: {display_local}) already exists on the cloud. Skipping file...")
-                REMOTE_FOUND = True
-                break
-        if REMOTE_FOUND:
-            continue
-
-        # determine the local source directory for this file (temp if encrypted)
-        if file['encrypted']:
-            local_source_dir = TEMP_DIR
-            fmt.debug("file", f"File {file['relative_path'].replace('\\\\', '/')} is encrypted. Using source directory as {TEMP_DIR}.")
-        else:
-            local_source_dir = settings["directories"]["sourcedir"]
-            fmt.debug("file", f"File {file['relative_path'].replace('\\\\', '/')} is not encrypted. Using source directory as {local_source_dir}.")
-
-        fmt.info("upload", f"Uploading {file['relative_path'].replace('\\\\', '/')}...")
-
-        if SHOWQUOTA:
-            # QUOTA CALCULATIONS
-            quotareq = requests.get(f"{BASEURLTB}/api/quota?checkfree=1",
-                                    headers={"User-Agent": USERAGENT},
-                                    cookies=COOKIES, timeout=10)
-            quota = json.loads(quotareq.text)
-            aviquot = quota['total'] - quota['used']  # available quota
-
-            fmt.debug("quota", f"Available quota: {convert_size(aviquot)}")
-            if aviquot < file['sizebytes']:
-                fmt.error("quota", f"Not enough quota available for file {file['name']}.")
-                continue
-            fmt.debug("quota",
-                      f"Available quota after the upload: {convert_size(aviquot - file['sizebytes'])}")
-
-        # UPLOAD PROCEDURE
-        local_file_path = os.path.abspath(os.path.join(local_source_dir, file['relative_path']))
-        if file['encrypted']:
-            # encrypted files are expected in temp with same name + .enc
-            local_file_path = os.path.abspath(os.path.join(TEMP_DIR, file['name']))
-
-        if not os.path.exists(local_file_path):
-            fmt.error("upload", f"File {local_file_path} does not exist on the source directory anymore. Skipping file...")
-            ERRORS = True
-            continue
-
-        if (vip == 1 and file['sizebytes'] >= 21474836479) or (vip == 0 and file['sizebytes'] >= 4294967296):
-            fmt.error("upload",
-                      f"File {file['name']} is too big for the type of account you have. Skipping file...")
-            fmt.error("upload", f"File size: {convert_size(file['sizebytes'])}")
-            fmt.error("upload", f"Maximum file size for your account: {'20GB' if vip == 1 else '4GB'}")
-            ERRORS = True
-            continue
-
-        pieces = []
-        if file['sizebytes'] >= 2147483648:
-            fmt.info("split", "File size is greater than 2GB. Splitting original file in chunks...")
-
-            md5dict = []
-            CHUNK_SIZE = 120 * 1024 * 1024  # 120MB
-            num_chunks = int(os.path.getsize(local_file_path) / CHUNK_SIZE)
-            fmt.debug("split", f"File will be split in {num_chunks} chunks.")
-
-            for i in range(num_chunks):
-                chunk_filename = os.path.join(TEMP_DIR, f"{file['name']}.part{i:03d}")
-                with open(local_file_path, 'rb') as f, open(chunk_filename, 'wb') as chunk_file:
-                    f.seek(i * CHUNK_SIZE)
-                    chunk = f.read(CHUNK_SIZE)
-                    chunk_file.write(chunk)
-                    md5dict.append(hashlib.md5(chunk).hexdigest())
-                pieces.append(chunk_filename)
-
-            fmt.success("split", f"File split successfully in {len(pieces)} pieces.")
-            md5json = json.dumps(md5dict)
-        else:
-            with open(local_file_path, 'rb') as md5_file:
-                md5dict = [hashlib.md5(md5_file.read()).hexdigest()]
-            fmt.info("md5", f"MD5 hash calculated for file {file['relative_path'].replace('\\\\', '/')}.")
-            md5json = json.dumps(md5dict)
-            pieces.append(local_file_path)
-
-        # Preinitialize the full file on the cloud
-        fmt.info("precreate", f"Precreating cloud file {file['relative_path'].replace('\\\\', '/')}...")
-        # build cloud-relative path (remote path inside user's remote dir)
-        cloud_relative = file['relative_path']
-        # relative_path from base source directory: remove the base directory prefix
-        if cloud_relative.startswith(os.path.normpath(directory)):
-            # strip directory prefix and leading slashes
-            cloud_relative = cloud_relative[len(directory):].lstrip(os.sep)
-        cloud_relative = cloud_relative.replace("\\", "/")
-        if file['encrypted']:
-            cloud_relative += '.enc'
-        # uploadid expects the filename with cloud-relative path
-        uploadid = precreate_file(os.path.join(str(REMOTELOC), cloud_relative), md5json)
-        if uploadid == "fail":
-            ERRORS = True
-            continue
-        cloudpath = os.path.join(REMOTELOC, cloud_relative).replace("\\", "/")
-
-        if len(pieces) > 1:
-            fmt.info("split upload", f"Commencing upload of file {file['relative_path'].replace('\\\\','/')} in pieces...")
-
-            # Upload the pieces
-            for i, pi in enumerate(pieces):
-                fmt.debug("split upload", f"Uploading piece {i + 1} of {len(pieces)} for {file['relative_path'].replace('\\\\','/')}...")
-                # cloud filename for pieces is the cloud_relative name (service expects same cloud target)
-                upresponse = upload_file(pi, cloud_relative, uploadid, md5dict[i], i)
-                if upresponse in ("failed", "mismatch"):
-                    ERRORS = True
-                    continue
-                fmt.info("split upload", f"Piece {i + 1} of {len(pieces)} uploaded successfully for {file['relative_path'].replace('\\\\','/') }.")
-        else:
-            fmt.info("upload", f"Uploading file {file['relative_path'].replace('\\\\','/')}...")
-            uploadhash = upload_file(pieces[0], cloud_relative, uploadid, md5dict[0])
-            if uploadhash in ("failed", "mismatch"):
-                ERRORS = True
-                continue
-
-        # Create the file on the cloud
-        fmt.info("upload", f"Finalizing file {file['relative_path'].replace('\\\\','/')} upload...")
-        create = create_file(str(cloudpath), uploadid, file['sizebytes'], md5json)
-        if json.loads(create.text)["errno"] == 0:
-            display_local = _short_path(local_file_path, prefer_base=SOURCE_DIR)
-            fmt.success("upload", f"File {display_local} uploaded and saved on cloud successfully.")
-            fmt.success("upload", f"The file is now available at {cloudpath} in the cloud.")
-        else:
-            fmt.error("upload", f"File {file['name']} upload failed.")
-            fmt.error("upload", f"More information: {create}")
-            ERRORS = True
-            continue
-
-        if MOVEFILES:
-            try:
-                src_move = os.path.abspath(os.path.join(local_source_dir, file['relative_path']))
-                dst_move = os.path.abspath(os.path.join(MOVETOLOC, os.path.basename(file['relative_path'])))
-                fmt.info("move", f"Moving file {src_move} to {dst_move}...")
-                os.rename(src_move, dst_move)
-                fmt.success("move", f"File {file['name']} moved successfully to destination.")
-            except Exception as e:
-                fmt.error("move", f"File {file['name']} could not be moved.")
-                fmt.error("move", f"More information about this error: {e}")
-                ERRORS = True
-                continue
-
-        if DELSRCFIL:
-            try:
-                src_del = os.path.abspath(os.path.join(local_source_dir, file['relative_path']))
-                fmt.info("delete", f"Deleting file {src_del} from source directory...")
-                os.remove(src_del)
-                fmt.success("delete", f"File {file['name']} deleted successfully.")
-            except Exception as e:
-                fmt.error("delete", f"File {file['name']} could not be deleted.")
-                fmt.error("delete", f"More information about this error: {e}")
-                ERRORS = True
-                continue
-
-        def _ensure_str_path(p):
-            if isinstance(p, bytes):
-                return p.decode("utf-8")
-            return os.fspath(p)
-
-    abs_path = os.path.abspath(os.path.join(directory, file["name"]))
-    display_local = _short_path(abs_path, prefer_base=SOURCE_DIR)
-    fmt.success("upload", f"File {display_local} concluded every upload procedure.")
+        _process_single_file_entry(directory, file, remote_files)
 
 if not ERRORS:
     fmt.success("upload", "All files were uploaded.")
