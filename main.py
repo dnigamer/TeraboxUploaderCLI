@@ -28,7 +28,7 @@ import base64
 from modules.encryption import Encryption, FileEncryptedException
 from modules.formatting import Formatting
 
-CODE_VERSION = "1.8"
+CODE_VERSION = "1.8.1"
 fmt = Formatting(timestamps=True)
 
 print("-" * 97)
@@ -42,6 +42,7 @@ print("! This program is provided as-is, without any warranty.")
 print("! This program is not affiliated with Terabox in any way.")
 print("-" * 97)
 
+# Setup argument component
 if len(sys.argv) > 1 and sys.argv[1] == "setup":
     if os.path.exists("secrets.json") and os.path.exists("settings.json"):
         fmt.error("setup", "secrets.json and settings.json already exist in the current folder.")
@@ -252,6 +253,33 @@ if len(sys.argv) > 1 and sys.argv[1] == "setup":
             sys.exit()
 
     fmt.info("setup", "Setup completed. Please run the program again without the 'setup' argument.")
+    sys.exit()
+
+# Encryption setup component
+if len(sys.argv) > 1 and sys.argv[1] == "encryption":
+    # Generate encryption key
+    fmt.info("encryption", "Generating encryption key...")
+    encryption_key = base64.urlsafe_b64encode(os.urandom(32)).decode("utf-8")
+    fmt.success("encryption", f"Encryption key generated successfully: {encryption_key}")
+
+    print("Do you want to save this encryption key? (yes/no)")
+    save_key = input(": ")
+    if save_key.lower() == "yes":
+        try:
+            with open("settings.json", "r", encoding="utf8") as f:
+                content = json.load(f)
+            content["encryption"]["encryptionkey"] = encryption_key
+            with open("settings.json", "w", encoding="utf8") as f:
+                json.dump(content, f, indent=2)
+                f.truncate()
+            fmt.success("encryption", "Encryption key saved successfully.")
+        except json.JSONDecodeError as e:
+            fmt.error("encryption", "Invalid JSON format in settings.json.")
+            fmt.error("encryption", f"More information about this error: {e}")
+    else:
+        fmt.info("encryption", "Encryption key not saved.")
+
+    fmt.info("encryption", "Encryption process completed.")
     sys.exit()
 
 # CURL INSTALLATION
@@ -792,9 +820,12 @@ def _process_single_file_entry(directory, file, remote_files):
     # Safe, forward-slash relative path for logging and cloud comparisons
     rel_disp = file['relative_path'].replace('\\', '/')
 
-    # Skip if file already exists remotely
+    # Determine what the cloud-relative filename will be (append .enc for encrypted files)
+    cloud_relative = rel_disp + ('.enc' if file.get('encrypted') else '')
+
+    # Skip if file already exists remotely (compare using the cloud-relative name)
     for remote_file in remote_files:
-        if remote_file["path"].endswith(rel_disp):
+        if remote_file.get("path", "").endswith(cloud_relative):
             abs_path = os.path.abspath(os.path.join(str(directory), str(file["name"])))
             display_local = _short_path(abs_path, prefer_base=SOURCE_DIR)
             fmt.warning("upload", f"File {file['name']} (OS path: {display_local}) already exists on the cloud. Skipping file...")
