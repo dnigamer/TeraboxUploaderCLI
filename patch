@@ -1,22 +1,16 @@
-# Patch main.py to clean temp directory after each successful upload
+# Direct patch to add temp cleanup after successful upload
 import os
 
 main_path = "/content/TeraboxUploaderCLI/main.py"
 
-# Read the file
 with open(main_path, 'r') as f:
-    lines = f.readlines()
+    content = f.read()
 
-# Find the line with "concluded every upload procedure"
-insert_index = None
-for i, line in enumerate(lines):
-    if 'concluded every upload procedure' in line:
-        insert_index = i + 1
-        break
+# Find and replace the exact line
+old_line = '    fmt.success("upload", f"File {display_local} concluded every upload procedure.")'
 
-if insert_index and "# Clean up temp chunks" not in ''.join(lines):
-    # Code to insert after successful upload
-    cleanup_code = '''
+new_code = '''    fmt.success("upload", f"File {display_local} concluded every upload procedure.")
+    
     # Clean up temp chunks for this file
     if os.path.exists(TEMP_DIR):
         for item in os.listdir(TEMP_DIR):
@@ -24,18 +18,19 @@ if insert_index and "# Clean up temp chunks" not in ''.join(lines):
                 item_path = os.path.join(TEMP_DIR, item)
                 if os.path.isfile(item_path):
                     os.remove(item_path)
-            except:
-                pass
+                    fmt.debug("cleanup", f"Deleted temp file: {item}")
+            except Exception as e:
+                fmt.warning("cleanup", f"Failed to delete {item}: {e}")'''
 
-'''
+if old_line in content and "# Clean up temp chunks" not in content:
+    content = content.replace(old_line, new_code)
     
-    # Insert the cleanup code
-    lines.insert(insert_index, cleanup_code)
-    
-    # Write back
     with open(main_path, 'w') as f:
-        f.writelines(lines)
+        f.write(content)
     
-    print("✓ Patched main.py to clean temp directory after each upload")
+    print("✓ Patch applied successfully!")
 else:
-    print("Already patched or couldn't find the right location")
+    if "# Clean up temp chunks" in content:
+        print("Already patched")
+    else:
+        print("Could not find the target line to patch")
