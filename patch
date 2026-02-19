@@ -1,0 +1,41 @@
+# Patch main.py to clean temp directory after each successful upload
+import os
+
+main_path = "/content/TeraboxUploaderCLI/main.py"
+
+# Read the file
+with open(main_path, 'r') as f:
+    lines = f.readlines()
+
+# Find the line with "concluded every upload procedure"
+insert_index = None
+for i, line in enumerate(lines):
+    if 'concluded every upload procedure' in line:
+        insert_index = i + 1
+        break
+
+if insert_index and "# Clean up temp chunks" not in ''.join(lines):
+    # Code to insert after successful upload
+    cleanup_code = '''
+    # Clean up temp chunks for this file
+    if os.path.exists(TEMP_DIR):
+        for item in os.listdir(TEMP_DIR):
+            try:
+                item_path = os.path.join(TEMP_DIR, item)
+                if os.path.isfile(item_path):
+                    os.remove(item_path)
+            except:
+                pass
+
+'''
+    
+    # Insert the cleanup code
+    lines.insert(insert_index, cleanup_code)
+    
+    # Write back
+    with open(main_path, 'w') as f:
+        f.writelines(lines)
+    
+    print("✓ Patched main.py to clean temp directory after each upload")
+else:
+    print("Already patched or couldn't find the right location")
