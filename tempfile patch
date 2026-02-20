@@ -1,0 +1,31 @@
+import os
+
+main_path = "/content/TeraboxUploaderCLI/main.py"
+
+with open(main_path, 'r') as f:
+    content = f.read()
+
+old_code = '    fmt.success("upload", f"File {display_local} concluded every upload procedure.")'
+
+new_code = '''    fmt.success("upload", f"File {display_local} concluded every upload procedure.")
+
+    # Clean up temp chunks for this file only (scoped to current file's prefix)
+    if os.path.exists(TEMP_DIR):
+        current_file_prefix = file['name']
+        for item in os.listdir(TEMP_DIR):
+            if item.startswith(current_file_prefix):
+                try:
+                    item_path = os.path.join(TEMP_DIR, item)
+                    if os.path.isfile(item_path):
+                        os.remove(item_path)
+                        fmt.debug("cleanup", f"Deleted temp chunk: {item}")
+                except Exception as e:
+                    fmt.warning("cleanup", f"Failed to delete temp chunk {item}: {e}")'''
+
+if old_code in content:
+    content = content.replace(old_code, new_code)
+    with open(main_path, 'w') as f:
+        f.write(content)
+    print("✓ Patch applied (scoped chunk cleanup only)!")
+else:
+    print("Could not find the target line to patch")
