@@ -889,7 +889,7 @@ def _process_single_file_entry(directory, file, remote_files):
     if file['sizebytes'] >= 2147483648:
         fmt.info("split", "File size is greater than 2GB. Splitting original file in chunks...")
         CHUNK_SIZE = 120 * 1024 * 1024
-        num_chunks = int(os.path.getsize(local_file_path) / CHUNK_SIZE)
+        num_chunks = (os.path.getsize(local_file_path) + CHUNK_SIZE - 1) // CHUNK_SIZE
         fmt.debug("split", f"File will be split in {num_chunks} chunks.")
         for i in range(num_chunks):
             chunk_filename = os.path.join(TEMP_DIR, f"{file['name']}.part{i:03d}")
