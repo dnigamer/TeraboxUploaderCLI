@@ -303,7 +303,7 @@ class Encryption:
         except Exception as e:
             raise DecryptFileException(f"Something went wrong when loading keyfile: {e}") from e
 
-        destination = os.path.join("./temp", f"{os.path.basename(filename)[:-4]}.dec")
+        destination = filename[:-4]
 
         # OPEN FILE, DECRYPT AND SAVE
         try:
@@ -355,7 +355,7 @@ class Encryption:
         except Exception as e:
             raise DecryptFileException(f"Something went wrong when loading keyfile: {e}") from e
 
-        destination = os.path.join("./temp", f"{os.path.basename(filename)[:-4]}.dec")
+        destination = filename[:-4]
 
         # OPEN FILE, DECRYPT AND SAVE
         try:
