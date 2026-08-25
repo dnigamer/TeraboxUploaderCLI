@@ -744,7 +744,7 @@ def get_files_in_directory(find_dir, base_directory) -> dict:
     :return:                dict of files in the directory
     """
     dir_files = {}
-    for filename in os.listdir(find_dir):
+    for filename in sorted(os.listdir(find_dir)):
         full_path = os.path.join(find_dir, filename)
         if os.path.isfile(full_path):
             if filename in [".DS_Store", os.path.basename(__file__), "settings.json", "secrets.json"]:
